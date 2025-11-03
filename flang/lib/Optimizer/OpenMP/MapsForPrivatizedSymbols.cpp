@@ -132,7 +132,7 @@ class MapsForPrivatizedSymbolsPass
             llvm::cast<omp::PointerLikeType>(varType).getElementType()),
         builder.getAttr<omp::ClauseMapFlagsAttr>(mapFlag),
         builder.getAttr<omp::VariableCaptureKindAttr>(captureKind),
-        /*varPtrPtr=*/Value{},
+        /*varPtrPtr=*/Value{}, /*varPtrPtrType=*/TypeAttr{},
         /*members=*/SmallVector<Value>{},
         /*member_index=*/mlir::ArrayAttr{},
         /*bounds=*/boundsOps,
