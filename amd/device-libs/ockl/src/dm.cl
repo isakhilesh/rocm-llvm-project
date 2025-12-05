@@ -578,10 +578,29 @@ obtain_new_slab(__global heap_t *hp)
     ulong se = hp->initial_slabs_end;
     if (is < se) {
         is = AFA(&hp->initial_slabs, 1UL << 21, memory_order_relaxed);
-        if (is < se)
+        if (is < se) {
+            // Verify 2MB alignment for pre-allocated slabs
+            // This is critical because __ockl_dm_dealloc relies on address masking
+            // to find the slab base address: addr & ~0x1fffffUL
+            if ((is & 0x1fffffUL) != 0) {
+                // Fatal error: pre-allocated slab not 2MB aligned
+                // This will cause memory corruption in dealloc
+                return 0;
+            }
             return is;
+        }
     }
     ulong ret = __ockl_devmem_request(0, 1UL << 21);
+    
+    // Verify 2MB alignment for dynamically allocated slabs
+    // The hostcall implementation must guarantee this alignment
+    if (ret && (ret & 0x1fffffUL) != 0) {
+        // Fatal error: dynamically allocated slab not 2MB aligned
+        // Release the misaligned memory and return failure
+        __ockl_devmem_request(ret, 0);
+        return 0;
+    }
+    
     return ret;
 }
 
@@ -947,9 +966,24 @@ __ockl_dm_init_v1(ulong hp, ulong sp, uint hb, uint nis)
 
     if (lid == 0) {
         __global heap_t *thp = (__global heap_t *)hp;
-        AS(&thp->initial_slabs, sp, memory_order_relaxed);
-        thp->initial_slabs_end = sp + ((ulong)nis << 21);
-        thp->initial_slabs_start = sp;
+        
+        // CRITICAL: Verify that initial_slabs pointer is 2MB aligned
+        // The deallocation code assumes all slabs are 2MB aligned and uses
+        // address masking (addr & ~0x1fffffUL) to find slab metadata.
+        // Misaligned slabs will cause memory corruption and crashes.
+        if ((sp & 0x1fffffUL) != 0) {
+            // Fatal error: initial slabs base address not 2MB aligned
+            // Set initial_slabs to end to prevent use of misaligned slabs
+            // This forces allocation to fall back to devmem_request which
+            // should provide properly aligned memory
+            AS(&thp->initial_slabs, sp + ((ulong)nis << 21), memory_order_relaxed);
+            thp->initial_slabs_end = sp + ((ulong)nis << 21);
+            thp->initial_slabs_start = sp + ((ulong)nis << 21);
+        } else {
+            AS(&thp->initial_slabs, sp, memory_order_relaxed);
+            thp->initial_slabs_end = sp + ((ulong)nis << 21);
+            thp->initial_slabs_start = sp;
+        }
     }
 }
 
