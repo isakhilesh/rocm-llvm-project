@@ -1876,7 +1876,6 @@ void ControlFlowRewriter::rewrite() {
       RegMap;
   GCNLaneMaskUpdater Updater(Function);
   Updater.setLaneMaskAnalysis(&LMA);
-  Updater.setAccumulating(true);
 
   for (WaveNode *LaneTarget : NodeOrder) {
     CFGNodeInfo &LaneTargetInfo = NodeInfo.find(LaneTarget)->second;
