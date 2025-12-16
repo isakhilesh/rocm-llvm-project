@@ -2098,6 +2098,14 @@ void ControlFlowRewriter::rewrite() {
     LLVM_DEBUG(Function.dump());
   }
   Updater.insertAccumulatorResets();
+  // Replace MovTermOpc with MovOpc
+  for (MachineBasicBlock &MBB : Function) {
+    for (MachineInstr &MI : MBB) {
+      if (MI.getOpcode() == LMC.MovTermOpc) {
+        MI.setDesc(TII.get(LMC.MovOpc));
+      }
+    }
+  }
   Updater.cleanup();
 }
 
