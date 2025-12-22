@@ -2375,6 +2375,12 @@ bool AMDGPUInstructionSelector::selectG_INTRINSIC_W_SIDE_EFFECTS(
   case Intrinsic::amdgcn_load_to_lds:
   case Intrinsic::amdgcn_global_load_lds:
     return selectGlobalLoadLds(I);
+  case Intrinsic::amdgcn_asyncmark:
+  case Intrinsic::amdgcn_wait_asyncmark:
+    // FIXME: Not supported on GFX12 yet. Will need a new feature when we do.
+    if (!Subtarget->hasVMemToLDSLoad())
+      return false;
+    break;
   case Intrinsic::amdgcn_exp_compr:
     if (!STI.hasCompressedExport()) {
       Function &F = I.getMF()->getFunction();

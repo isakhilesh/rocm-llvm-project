@@ -368,12 +368,15 @@ enum CPol {
   GLC = 1,
   SLC = 2,
   DLC = 4,
+  SWZ_pregfx12 = 8,
   SCC = 16,
+  ASYNC_pregfx12 = 32,
+
   SC0 = GLC,
   SC1 = SCC,
   NT = SLC,
-  ALL_pregfx12 = GLC | SLC | DLC | SCC,
-  SWZ_pregfx12 = 8,
+  // Bits that should survive in MIR
+  ALL_pregfx12 = GLC | SLC | DLC | SCC | ASYNC_pregfx12,
 
   // Below are GFX12+ cache policy bits
 

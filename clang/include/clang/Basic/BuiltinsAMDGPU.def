@@ -539,6 +539,14 @@ TARGET_BUILTIN(__builtin_amdgcn_cvt_scalef32_2xpk16_fp6_f32, "V6UiV16fV16ff", "n
 TARGET_BUILTIN(__builtin_amdgcn_cvt_scalef32_2xpk16_bf6_f32, "V6UiV16fV16ff", "nc", "gfx950-insts")
 
 //===----------------------------------------------------------------------===//
+// Async mark builtins.
+//===----------------------------------------------------------------------===//
+
+// FIXME: Not supported on GFX12 yet. Will need a new feature when we do.
+TARGET_BUILTIN(__builtin_amdgcn_asyncmark, "v", "n", "vmem-to-lds-load-insts")
+TARGET_BUILTIN(__builtin_amdgcn_wait_asyncmark, "vIs", "n", "vmem-to-lds-load-insts")
+
+//===----------------------------------------------------------------------===//
 // GFX12+ only builtins.
 //===----------------------------------------------------------------------===//
 

@@ -1015,6 +1015,10 @@ public:
     return MI.getDesc().TSFlags & SIInstrFlags::VM_CNT;
   }
 
+  static bool usesASYNC_CNT(const MachineInstr &MI) {
+    return MI.getDesc().TSFlags & SIInstrFlags::ASYNC_CNT;
+  }
+
   static bool usesLGKM_CNT(const MachineInstr &MI) {
     return MI.getDesc().TSFlags & SIInstrFlags::LGKM_CNT;
   }
