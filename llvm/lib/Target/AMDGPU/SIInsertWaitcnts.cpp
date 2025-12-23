@@ -458,7 +458,7 @@ private:
   DenseSet<MachineInstr *> ReleaseVGPRInsts;
 
   // Track legacy async instructions to later remove CPol::ASYNC_pregfx12
-  SmallVector<MachineInstr *, 32> InstsWithAsyncCpolBit;
+  SmallVector<MachineInstr*> InstsWithAsyncCpolBit;
 
   HardwareLimits Limits;
 
@@ -571,31 +571,23 @@ public:
 
   bool hasCPolAsyncBit(const MachineInstr &MI) const {
     const MachineOperand *CPol = TII->getNamedOperand(MI, AMDGPU::OpName::cpol);
-    if (!CPol || !CPol->isImm())
-      return false;
-    return CPol->getImm() & AMDGPU::CPol::ASYNC_pregfx12;
+    return CPol && (CPol->getImm() & AMDGPU::CPol::ASYNC_pregfx12);
   }
 
-  // FIXME: For GFX1250, this should also check for usesASYNC_CNT
   bool isAsync(const MachineInstr &MI) const {
     if (!SIInstrInfo::isLDSDMA(MI))
       return false;
-    if (SIInstrInfo::usesASYNC_CNT(MI)) {
+    if (SIInstrInfo::usesASYNC_CNT(MI))
       return true;
-    }
     return hasCPolAsyncBit(MI);
   }
 
   bool isNonAsyncLdsDmaWrite(const MachineInstr &MI) const {
-    if (!SIInstrInfo::mayWriteLDSThroughDMA(MI))
-      return false;
-    return !isAsync(MI);
+    return SIInstrInfo::mayWriteLDSThroughDMA(MI) && !isAsync(MI);
   }
 
   bool isAsyncLdsDmaWrite(const MachineInstr &MI) const {
-    if (!SIInstrInfo::mayWriteLDSThroughDMA(MI))
-      return false;
-    return isAsync(MI);
+    return SIInstrInfo::mayWriteLDSThroughDMA(MI) && isAsync(MI);
   }
 
   bool isVmemAccess(const MachineInstr &MI) const;
@@ -856,8 +848,6 @@ private:
   void setScoreByOperand(const MachineOperand &Op, InstCounterType CntTy,
                          unsigned Val);
 
-  InstCounterType getAsyncCounterType() const { return LOAD_CNT; }
-
   const SIInsertWaitcnts *Context;
 
   unsigned ScoreLBs[NUM_INST_CNTS] = {0};
@@ -1109,7 +1099,7 @@ void WaitcntBrackets::updateByEvent(WaitEventType E, MachineInstr &Inst) {
       setScoreByOperand(Op, T, CurrScore);
     }
     if (Inst.mayStore() &&
-        (TII->isDS(Inst) || (Context->isNonAsyncLdsDmaWrite(Inst)))) {
+        (TII->isDS(Inst) || Context->isNonAsyncLdsDmaWrite(Inst))) {
       // MUBUF and FLAT LDS DMA operations need a wait on vmcnt before LDS
       // written can be accessed. A load from LDS to VMEM does not need a wait.
       //
@@ -1153,8 +1143,10 @@ void WaitcntBrackets::updateByEvent(WaitEventType E, MachineInstr &Inst) {
         setVMemScore(LDSDMA_BEGIN + Slot, T, CurrScore);
     }
 
+    // FIXME: Not supported on GFX12 yet. Newer async operations use other
+    // counters too, so will need a map from instruction or event types to
+    // counter types.
     if (Context->isAsyncLdsDmaWrite(Inst) && T == LOAD_CNT) {
-      // FIXME: Not supported on GFX12 yet. Will need a new feature when we do.
       assert(!SIInstrInfo::usesASYNC_CNT(Inst));
       AsyncScore[T] = CurrScore;
     }
@@ -1167,7 +1159,7 @@ void WaitcntBrackets::updateByEvent(WaitEventType E, MachineInstr &Inst) {
 }
 
 void WaitcntBrackets::recordAsyncMark(MachineInstr &Inst) {
-  AsyncMarkers.emplace_back(AsyncScore);
+  AsyncMarkers.push_back(AsyncScore);
   AsyncScore = {};
   LLVM_DEBUG({
     dbgs() << "recordAsyncMark:\n" << Inst;
@@ -1181,10 +1173,8 @@ void WaitcntBrackets::recordAsyncMark(MachineInstr &Inst) {
 void WaitcntBrackets::print(raw_ostream &OS) const {
   const GCNSubtarget *ST = Context->ST;
 
-  OS << '\n';
   for (auto T : inst_counter_types(Context->MaxCounter)) {
     unsigned SR = getScoreRange(T);
-
     switch (T) {
     case LOAD_CNT:
       OS << "    " << (ST->hasExtendedWaitCounts() ? "LOAD" : "VM") << "_CNT("
@@ -1272,18 +1262,18 @@ void WaitcntBrackets::print(raw_ostream &OS) const {
   OS << '\n';
 
   OS << "Async score: ";
-  if (!AsyncScore.size()) {
+  if (AsyncScore.empty())
     OS << "none";
-  }
-  llvm::interleaveComma(AsyncScore, OS);
+  else
+    llvm::interleaveComma(AsyncScore, OS);
   OS << '\n';
 
   OS << "Async markers:";
-  if (!AsyncMarkers.size()) {
-    OS << " none";
-  }
+  if (AsyncMarkers.empty())
+    OS << "none";
+  OS << '\n';
+
   for (const auto &Marker : AsyncMarkers) {
-    OS << '\n';
     for (auto T : inst_counter_types()) {
       unsigned MarkedScore = Marker[T];
       switch (T) {
@@ -1318,12 +1308,9 @@ void WaitcntBrackets::print(raw_ostream &OS) const {
         OS << "    UNKNOWN: " << MarkedScore;
         break;
       }
+      OS << '\n';
     }
   }
-
-  OS << "\n";
-
-  OS << '\n';
 }
 
 /// Simplify the waitcnt, in the sense of removing redundant counts, and return
@@ -1684,9 +1671,9 @@ bool WaitcntGeneratorPreGFX12::applyPreexistingWaitcnt(
       // possibility in an articial MIR test since such a situation cannot be
       // recreated by running the memory legalizer.
       II.eraseFromParent();
-    } else if (Opcode == AMDGPU::S_WAIT_ASYNCMARK) {
+    } else if (Opcode == AMDGPU::WAIT_ASYNCMARK) {
       unsigned N = II.getOperand(0).getImm();
-      LLVM_DEBUG(dbgs() << "Processing S_WAIT_ASYNCMARK: " << II << '\n';);
+      LLVM_DEBUG(dbgs() << "Processing WAIT_ASYNCMARK: " << II << '\n';);
       AMDGPU::Waitcnt OldWait = ScoreBrackets.determineAsyncWait(N);
       Wait = Wait.combined(OldWait);
     } else {
@@ -1865,8 +1852,8 @@ bool WaitcntGeneratorGFX12Plus::applyPreexistingWaitcnt(
       // LDS, so no work required here yet.
       II.eraseFromParent();
       continue;
-    } else if (Opcode == AMDGPU::S_WAIT_ASYNCMARK) {
-      reportFatalUsageError("S_WAIT_ASYNCMARK is not ready for GFX12 yet");
+    } else if (Opcode == AMDGPU::WAIT_ASYNCMARK) {
+      reportFatalUsageError("WAIT_ASYNCMARK is not ready for GFX12 yet");
     } else {
       std::optional<InstCounterType> CT = counterTypeForInstr(Opcode);
       assert(CT.has_value());
@@ -2108,7 +2095,7 @@ bool SIInsertWaitcnts::generateWaitcntInstBefore(MachineInstr &MI,
                                                  WaitcntBrackets &ScoreBrackets,
                                                  MachineInstr *OldWaitcntInstr,
                                                  bool FlushVmCnt) {
-  LLVM_DEBUG(dbgs() << "GenerateWaitcntInstBefore: "; MI.print(dbgs()););
+  LLVM_DEBUG(dbgs() << "\n*** GenerateWaitcntInstBefore: "; MI.print(dbgs()););
   setForceEmitWaitcnt();
 
   assert(!MI.isMetaInstruction());
@@ -2384,10 +2371,8 @@ bool SIInsertWaitcnts::generateWaitcntInstBefore(MachineInstr &MI,
   if (ForceEmitZeroLoadFlag && Wait.LoadCnt != ~0u)
     Wait.LoadCnt = 0;
 
-  bool Changed = generateWaitcnt(Wait, MI.getIterator(), *MI.getParent(),
-                                 ScoreBrackets, OldWaitcntInstr);
-
-  return Changed;
+  return generateWaitcnt(Wait, MI.getIterator(), *MI.getParent(),
+                         ScoreBrackets, OldWaitcntInstr);
 }
 
 bool SIInsertWaitcnts::generateWaitcnt(AMDGPU::Waitcnt Wait,
@@ -2772,7 +2757,7 @@ static bool isWaitInstr(MachineInstr &Inst) {
          Opcode == AMDGPU::S_WAIT_LOADCNT_DSCNT ||
          Opcode == AMDGPU::S_WAIT_STORECNT_DSCNT ||
          Opcode == AMDGPU::S_WAITCNT_lds_direct ||
-         Opcode == AMDGPU::S_WAIT_ASYNCMARK ||
+         Opcode == AMDGPU::WAIT_ASYNCMARK ||
          counterTypeForInstr(Opcode).has_value();
 }
 
@@ -2823,7 +2808,7 @@ bool SIInsertWaitcnts::insertWaitcntInBlock(MachineFunction &MF,
       continue;
     }
 
-    if (Inst.getOpcode() == AMDGPU::S_ASYNCMARK) {
+    if (Inst.getOpcode() == AMDGPU::ASYNCMARK) {
       // FIXME: Not supported on GFX12 yet. Will need a new feature when we do.
       assert(ST->getGeneration() < AMDGPUSubtarget::GFX12);
       ScoreBrackets.recordAsyncMark(Inst);

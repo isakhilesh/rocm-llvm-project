@@ -1692,13 +1692,12 @@ def S_WAITCNT_lds_direct : SPseudoInstSI<(outs), (ins)> {
    let hasSideEffects = 0;
 }
 
-// FIXME: Until support for GFX12Plus is ready, restrict these to only preGFX12
-let SubtargetPredicate = isGFX9GFX10GFX11 in {
-def S_ASYNCMARK : SPseudoInstSI<(outs), (ins),
+let SubtargetPredicate = HasVMemToLDSLoad in {
+def ASYNCMARK : SPseudoInstSI<(outs), (ins),
   [(int_amdgcn_asyncmark)]> {
    let maybeAtomic = 0;
 }
-def S_WAIT_ASYNCMARK : SOPP_Pseudo <"", (ins s16imm:$simm16), "$simm16",
+def WAIT_ASYNCMARK : SOPP_Pseudo <"", (ins s16imm:$simm16), "$simm16",
     [(int_amdgcn_wait_asyncmark timm:$simm16)]> {
     let maybeAtomic = 0;
 }

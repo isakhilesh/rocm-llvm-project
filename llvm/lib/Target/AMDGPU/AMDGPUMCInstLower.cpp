@@ -361,15 +361,15 @@ void AMDGPUAsmPrinter::emitInstruction(const MachineInstr *MI) {
       return;
     }
 
-    if (MI->getOpcode() == AMDGPU::S_ASYNCMARK) {
+    if (MI->getOpcode() == AMDGPU::ASYNCMARK) {
       if (isVerbose())
-        OutStreamer->emitRawComment(" s_asyncmark");
+        OutStreamer->emitRawComment(" asyncmark");
       return;
     }
 
-    if (MI->getOpcode() == AMDGPU::S_WAIT_ASYNCMARK) {
+    if (MI->getOpcode() == AMDGPU::WAIT_ASYNCMARK) {
       if (isVerbose()) {
-        OutStreamer->emitRawComment(" s_wait_asyncmark(" +
+        OutStreamer->emitRawComment(" wait_asyncmark(" +
                                     Twine(MI->getOperand(0).getImm()) + ")");
       }
       return;

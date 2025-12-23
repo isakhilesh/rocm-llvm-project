@@ -24,7 +24,7 @@ define void @interleaved_with_wave_barrier(ptr addrspace(1) %foo, ptr addrspace(
 ; GFX900-NEXT:    global_load_dword v[7:8], off glc lds
 ; GFX900-NEXT:    v_add_u32_e32 v8, 0x58, v2
 ; GFX900-NEXT:    ; wave barrier
-; GFX900-NEXT:    ; s_asyncmark
+; GFX900-NEXT:    ; asyncmark
 ; GFX900-NEXT:    global_load_dword v7, v[0:1], off offset:8
 ; GFX900-NEXT:    v_add_co_u32_e32 v0, vcc, s4, v3
 ; GFX900-NEXT:    v_readfirstlane_b32 s4, v8
@@ -35,11 +35,11 @@ define void @interleaved_with_wave_barrier(ptr addrspace(1) %foo, ptr addrspace(
 ; GFX900-NEXT:    global_load_dword v[0:1], off glc slc lds
 ; GFX900-NEXT:    ; wave barrier
 ; GFX900-NEXT:    global_load_dword v0, v[3:4], off offset:48
-; GFX900-NEXT:    ; s_asyncmark
-; GFX900-NEXT:    ; s_wait_asyncmark(1)
+; GFX900-NEXT:    ; asyncmark
+; GFX900-NEXT:    ; wait_asyncmark(1)
 ; GFX900-NEXT:    s_waitcnt vmcnt(3)
 ; GFX900-NEXT:    ds_read_b32 v1, v2 offset:84
-; GFX900-NEXT:    ; s_wait_asyncmark(0)
+; GFX900-NEXT:    ; wait_asyncmark(0)
 ; GFX900-NEXT:    s_waitcnt vmcnt(1)
 ; GFX900-NEXT:    ds_read_b32 v2, v2 offset:88
 ; GFX900-NEXT:    v_add_u32_e32 v3, v10, v9
@@ -70,7 +70,7 @@ define void @interleaved_with_wave_barrier(ptr addrspace(1) %foo, ptr addrspace(
 ; GFX942-NEXT:    global_load_lds_dword v[4:5], off sc0
 ; GFX942-NEXT:    v_add_u32_e32 v5, 0x58, v2
 ; GFX942-NEXT:    ; wave barrier
-; GFX942-NEXT:    ; s_asyncmark
+; GFX942-NEXT:    ; asyncmark
 ; GFX942-NEXT:    global_load_dword v4, v[0:1], off offset:8
 ; GFX942-NEXT:    v_lshl_add_u64 v[0:1], v[8:9], 0, s[0:1]
 ; GFX942-NEXT:    v_readfirstlane_b32 s0, v5
@@ -81,11 +81,11 @@ define void @interleaved_with_wave_barrier(ptr addrspace(1) %foo, ptr addrspace(
 ; GFX942-NEXT:    global_load_lds_dword v[0:1], off sc0 nt
 ; GFX942-NEXT:    ; wave barrier
 ; GFX942-NEXT:    global_load_dword v0, v[8:9], off offset:48
-; GFX942-NEXT:    ; s_asyncmark
-; GFX942-NEXT:    ; s_wait_asyncmark(1)
+; GFX942-NEXT:    ; asyncmark
+; GFX942-NEXT:    ; wait_asyncmark(1)
 ; GFX942-NEXT:    s_waitcnt vmcnt(3)
 ; GFX942-NEXT:    ds_read_b32 v1, v2 offset:84
-; GFX942-NEXT:    ; s_wait_asyncmark(0)
+; GFX942-NEXT:    ; wait_asyncmark(0)
 ; GFX942-NEXT:    s_waitcnt vmcnt(1)
 ; GFX942-NEXT:    ds_read_b32 v2, v2 offset:88
 ; GFX942-NEXT:    s_waitcnt lgkmcnt(1)
@@ -112,7 +112,7 @@ define void @interleaved_with_wave_barrier(ptr addrspace(1) %foo, ptr addrspace(
 ; GFX1010-NEXT:    global_load_dword v[7:8], off glc lds
 ; GFX1010-NEXT:    v_add_co_u32 v7, vcc_lo, 0x58, v3
 ; GFX1010-NEXT:    ; wave barrier
-; GFX1010-NEXT:    ; s_asyncmark
+; GFX1010-NEXT:    ; asyncmark
 ; GFX1010-NEXT:    v_add_co_ci_u32_e32 v8, vcc_lo, 0, v4, vcc_lo
 ; GFX1010-NEXT:    global_load_dword v0, v[0:1], off offset:8
 ; GFX1010-NEXT:    s_mov_b32 m0, s4
@@ -120,11 +120,11 @@ define void @interleaved_with_wave_barrier(ptr addrspace(1) %foo, ptr addrspace(
 ; GFX1010-NEXT:    global_load_dword v[7:8], off glc slc lds
 ; GFX1010-NEXT:    ; wave barrier
 ; GFX1010-NEXT:    global_load_dword v1, v[3:4], off offset:48
-; GFX1010-NEXT:    ; s_asyncmark
-; GFX1010-NEXT:    ; s_wait_asyncmark(1)
+; GFX1010-NEXT:    ; asyncmark
+; GFX1010-NEXT:    ; wait_asyncmark(1)
 ; GFX1010-NEXT:    s_waitcnt vmcnt(3)
 ; GFX1010-NEXT:    ds_read_b32 v3, v2 offset:84
-; GFX1010-NEXT:    ; s_wait_asyncmark(0)
+; GFX1010-NEXT:    ; wait_asyncmark(0)
 ; GFX1010-NEXT:    s_waitcnt vmcnt(1)
 ; GFX1010-NEXT:    ds_read_b32 v2, v2 offset:88
 ; GFX1010-NEXT:    v_add_nc_u32_e32 v4, v10, v9
@@ -191,7 +191,7 @@ define void @buffers_with_wave_barrier(ptr addrspace(8) inreg %buf, ptr addrspac
 ; GFX900-NEXT:    ; wave barrier
 ; GFX900-NEXT:    buffer_load_dword v8, s[16:19], 0 offen lds
 ; GFX900-NEXT:    ; wave barrier
-; GFX900-NEXT:    ; s_asyncmark
+; GFX900-NEXT:    ; asyncmark
 ; GFX900-NEXT:    global_load_dword v0, v[0:1], off offset:8
 ; GFX900-NEXT:    s_add_i32 m0, s20, 0x58
 ; GFX900-NEXT:    v_mov_b32_e32 v1, 0x58
@@ -200,11 +200,11 @@ define void @buffers_with_wave_barrier(ptr addrspace(8) inreg %buf, ptr addrspac
 ; GFX900-NEXT:    ; wave barrier
 ; GFX900-NEXT:    global_load_dword v1, v[2:3], off offset:48
 ; GFX900-NEXT:    v_mov_b32_e32 v2, s20
-; GFX900-NEXT:    ; s_asyncmark
-; GFX900-NEXT:    ; s_wait_asyncmark(1)
+; GFX900-NEXT:    ; asyncmark
+; GFX900-NEXT:    ; wait_asyncmark(1)
 ; GFX900-NEXT:    s_waitcnt vmcnt(3)
 ; GFX900-NEXT:    ds_read_b32 v3, v2 offset:84
-; GFX900-NEXT:    ; s_wait_asyncmark(0)
+; GFX900-NEXT:    ; wait_asyncmark(0)
 ; GFX900-NEXT:    s_waitcnt vmcnt(1)
 ; GFX900-NEXT:    ds_read_b32 v2, v2 offset:88
 ; GFX900-NEXT:    v_add_u32_e32 v6, v7, v6
@@ -226,7 +226,7 @@ define void @buffers_with_wave_barrier(ptr addrspace(8) inreg %buf, ptr addrspac
 ; GFX942-NEXT:    ; wave barrier
 ; GFX942-NEXT:    buffer_load_dword v8, s[0:3], 0 offen lds
 ; GFX942-NEXT:    ; wave barrier
-; GFX942-NEXT:    ; s_asyncmark
+; GFX942-NEXT:    ; asyncmark
 ; GFX942-NEXT:    global_load_dword v0, v[0:1], off offset:8
 ; GFX942-NEXT:    s_add_i32 m0, s16, 0x58
 ; GFX942-NEXT:    v_mov_b32_e32 v1, 0x58
@@ -235,11 +235,11 @@ define void @buffers_with_wave_barrier(ptr addrspace(8) inreg %buf, ptr addrspac
 ; GFX942-NEXT:    ; wave barrier
 ; GFX942-NEXT:    global_load_dword v1, v[2:3], off offset:48
 ; GFX942-NEXT:    v_mov_b32_e32 v2, s16
-; GFX942-NEXT:    ; s_asyncmark
-; GFX942-NEXT:    ; s_wait_asyncmark(1)
+; GFX942-NEXT:    ; asyncmark
+; GFX942-NEXT:    ; wait_asyncmark(1)
 ; GFX942-NEXT:    s_waitcnt vmcnt(3)
 ; GFX942-NEXT:    ds_read_b32 v3, v2 offset:84
-; GFX942-NEXT:    ; s_wait_asyncmark(0)
+; GFX942-NEXT:    ; wait_asyncmark(0)
 ; GFX942-NEXT:    s_waitcnt vmcnt(1)
 ; GFX942-NEXT:    ds_read_b32 v2, v2 offset:88
 ; GFX942-NEXT:    v_add_u32_e32 v6, v7, v6
@@ -261,7 +261,7 @@ define void @buffers_with_wave_barrier(ptr addrspace(8) inreg %buf, ptr addrspac
 ; GFX1010-NEXT:    ; wave barrier
 ; GFX1010-NEXT:    buffer_load_dword v6, s[16:19], 0 offen lds
 ; GFX1010-NEXT:    ; wave barrier
-; GFX1010-NEXT:    ; s_asyncmark
+; GFX1010-NEXT:    ; asyncmark
 ; GFX1010-NEXT:    v_mov_b32_e32 v6, 0x58
 ; GFX1010-NEXT:    global_load_dword v0, v[0:1], off offset:8
 ; GFX1010-NEXT:    s_add_i32 m0, s20, 0x58
@@ -270,11 +270,11 @@ define void @buffers_with_wave_barrier(ptr addrspace(8) inreg %buf, ptr addrspac
 ; GFX1010-NEXT:    ; wave barrier
 ; GFX1010-NEXT:    global_load_dword v1, v[2:3], off offset:48
 ; GFX1010-NEXT:    v_mov_b32_e32 v2, s20
-; GFX1010-NEXT:    ; s_asyncmark
-; GFX1010-NEXT:    ; s_wait_asyncmark(1)
+; GFX1010-NEXT:    ; asyncmark
+; GFX1010-NEXT:    ; wait_asyncmark(1)
 ; GFX1010-NEXT:    s_waitcnt vmcnt(3)
 ; GFX1010-NEXT:    ds_read_b32 v3, v2 offset:84
-; GFX1010-NEXT:    ; s_wait_asyncmark(0)
+; GFX1010-NEXT:    ; wait_asyncmark(0)
 ; GFX1010-NEXT:    s_waitcnt vmcnt(1)
 ; GFX1010-NEXT:    ds_read_b32 v2, v2 offset:88
 ; GFX1010-NEXT:    v_add_nc_u32_e32 v6, v8, v7
@@ -345,20 +345,20 @@ define amdgpu_kernel void @test_pipelined_loop(ptr addrspace(1) %foo, ptr addrsp
 ; GFX900-NEXT:    s_add_i32 m0, s2, 4
 ; GFX900-NEXT:    s_add_u32 s6, s0, 4
 ; GFX900-NEXT:    s_addc_u32 s7, s1, 0
-; GFX900-NEXT:    ; s_asyncmark
+; GFX900-NEXT:    ; asyncmark
 ; GFX900-NEXT:    global_load_dword v0, s[6:7] lds
 ; GFX900-NEXT:    s_add_u32 s0, s0, 8
 ; GFX900-NEXT:    s_addc_u32 s1, s1, 0
 ; GFX900-NEXT:    s_mov_b32 s6, 2
 ; GFX900-NEXT:    s_mov_b32 s7, s2
-; GFX900-NEXT:    ; s_asyncmark
+; GFX900-NEXT:    ; asyncmark
 ; GFX900-NEXT:  .LBB2_1: ; %loop_body
 ; GFX900-NEXT:    ; =>This Inner Loop Header: Depth=1
 ; GFX900-NEXT:    s_add_i32 m0, s7, 8
 ; GFX900-NEXT:    v_mov_b32_e32 v2, s7
 ; GFX900-NEXT:    global_load_dword v0, s[0:1] lds
-; GFX900-NEXT:    ; s_asyncmark
-; GFX900-NEXT:    ; s_wait_asyncmark(2)
+; GFX900-NEXT:    ; asyncmark
+; GFX900-NEXT:    ; wait_asyncmark(2)
 ; GFX900-NEXT:    s_waitcnt vmcnt(2)
 ; GFX900-NEXT:    ds_read_b32 v2, v2
 ; GFX900-NEXT:    s_add_i32 s6, s6, 1
@@ -373,12 +373,12 @@ define amdgpu_kernel void @test_pipelined_loop(ptr addrspace(1) %foo, ptr addrsp
 ; GFX900-NEXT:    s_lshl2_add_u32 s0, s3, s2
 ; GFX900-NEXT:    s_add_i32 s0, s0, -8
 ; GFX900-NEXT:    v_mov_b32_e32 v0, s0
-; GFX900-NEXT:    ; s_wait_asyncmark(1)
+; GFX900-NEXT:    ; wait_asyncmark(1)
 ; GFX900-NEXT:    s_waitcnt vmcnt(1)
 ; GFX900-NEXT:    ds_read_b32 v0, v0
 ; GFX900-NEXT:    s_load_dwordx2 s[0:1], s[4:5], 0x34
 ; GFX900-NEXT:    v_mov_b32_e32 v2, 0
-; GFX900-NEXT:    ; s_wait_asyncmark(0)
+; GFX900-NEXT:    ; wait_asyncmark(0)
 ; GFX900-NEXT:    s_waitcnt vmcnt(0) lgkmcnt(0)
 ; GFX900-NEXT:    v_add_u32_e32 v0, v1, v0
 ; GFX900-NEXT:    global_store_dword v2, v0, s[0:1]
@@ -398,20 +398,20 @@ define amdgpu_kernel void @test_pipelined_loop(ptr addrspace(1) %foo, ptr addrsp
 ; GFX942-NEXT:    s_add_i32 m0, s2, 4
 ; GFX942-NEXT:    s_add_u32 s6, s0, 4
 ; GFX942-NEXT:    s_addc_u32 s7, s1, 0
-; GFX942-NEXT:    ; s_asyncmark
+; GFX942-NEXT:    ; asyncmark
 ; GFX942-NEXT:    global_load_lds_dword v0, s[6:7]
 ; GFX942-NEXT:    s_add_u32 s0, s0, 8
 ; GFX942-NEXT:    s_addc_u32 s1, s1, 0
 ; GFX942-NEXT:    s_mov_b32 s6, 2
 ; GFX942-NEXT:    s_mov_b32 s7, s2
-; GFX942-NEXT:    ; s_asyncmark
+; GFX942-NEXT:    ; asyncmark
 ; GFX942-NEXT:  .LBB2_1: ; %loop_body
 ; GFX942-NEXT:    ; =>This Inner Loop Header: Depth=1
 ; GFX942-NEXT:    s_add_i32 m0, s7, 8
 ; GFX942-NEXT:    v_mov_b32_e32 v2, s7
 ; GFX942-NEXT:    global_load_lds_dword v0, s[0:1]
-; GFX942-NEXT:    ; s_asyncmark
-; GFX942-NEXT:    ; s_wait_asyncmark(2)
+; GFX942-NEXT:    ; asyncmark
+; GFX942-NEXT:    ; wait_asyncmark(2)
 ; GFX942-NEXT:    s_waitcnt vmcnt(2)
 ; GFX942-NEXT:    ds_read_b32 v2, v2
 ; GFX942-NEXT:    s_add_i32 s6, s6, 1
@@ -426,12 +426,12 @@ define amdgpu_kernel void @test_pipelined_loop(ptr addrspace(1) %foo, ptr addrsp
 ; GFX942-NEXT:    s_lshl2_add_u32 s0, s3, s2
 ; GFX942-NEXT:    s_add_i32 s0, s0, -8
 ; GFX942-NEXT:    v_mov_b32_e32 v0, s0
-; GFX942-NEXT:    ; s_wait_asyncmark(1)
+; GFX942-NEXT:    ; wait_asyncmark(1)
 ; GFX942-NEXT:    s_waitcnt vmcnt(1)
 ; GFX942-NEXT:    ds_read_b32 v0, v0
 ; GFX942-NEXT:    s_load_dwordx2 s[0:1], s[4:5], 0x34
 ; GFX942-NEXT:    v_mov_b32_e32 v2, 0
-; GFX942-NEXT:    ; s_wait_asyncmark(0)
+; GFX942-NEXT:    ; wait_asyncmark(0)
 ; GFX942-NEXT:    s_waitcnt vmcnt(0) lgkmcnt(0)
 ; GFX942-NEXT:    v_add_u32_e32 v0, v1, v0
 ; GFX942-NEXT:    global_store_dword v2, v0, s[0:1]
@@ -452,21 +452,21 @@ define amdgpu_kernel void @test_pipelined_loop(ptr addrspace(1) %foo, ptr addrsp
 ; GFX1010-NEXT:    s_add_i32 m0, s2, 4
 ; GFX1010-NEXT:    s_add_u32 s6, s0, 4
 ; GFX1010-NEXT:    s_addc_u32 s7, s1, 0
-; GFX1010-NEXT:    ; s_asyncmark
+; GFX1010-NEXT:    ; asyncmark
 ; GFX1010-NEXT:    global_load_dword v0, s[6:7] lds
 ; GFX1010-NEXT:    s_add_u32 s0, s0, 8
 ; GFX1010-NEXT:    s_addc_u32 s1, s1, 0
 ; GFX1010-NEXT:    s_waitcnt_depctr depctr_vm_vsrc(0)
 ; GFX1010-NEXT:    s_mov_b32 s6, 2
 ; GFX1010-NEXT:    s_mov_b32 s7, s2
-; GFX1010-NEXT:    ; s_asyncmark
+; GFX1010-NEXT:    ; asyncmark
 ; GFX1010-NEXT:  .LBB2_1: ; %loop_body
 ; GFX1010-NEXT:    ; =>This Inner Loop Header: Depth=1
 ; GFX1010-NEXT:    s_add_i32 m0, s7, 8
 ; GFX1010-NEXT:    v_mov_b32_e32 v2, s7
 ; GFX1010-NEXT:    global_load_dword v0, s[0:1] lds
-; GFX1010-NEXT:    ; s_asyncmark
-; GFX1010-NEXT:    ; s_wait_asyncmark(2)
+; GFX1010-NEXT:    ; asyncmark
+; GFX1010-NEXT:    ; wait_asyncmark(2)
 ; GFX1010-NEXT:    s_waitcnt vmcnt(2)
 ; GFX1010-NEXT:    ds_read_b32 v2, v2
 ; GFX1010-NEXT:    s_add_i32 s6, s6, 1
@@ -480,14 +480,14 @@ define amdgpu_kernel void @test_pipelined_loop(ptr addrspace(1) %foo, ptr addrsp
 ; GFX1010-NEXT:    s_cbranch_scc1 .LBB2_1
 ; GFX1010-NEXT:  ; %bb.2: ; %epilog
 ; GFX1010-NEXT:    s_lshl2_add_u32 s0, s3, s2
-; GFX1010-NEXT:    ; s_wait_asyncmark(1)
+; GFX1010-NEXT:    ; wait_asyncmark(1)
 ; GFX1010-NEXT:    s_waitcnt vmcnt(1)
 ; GFX1010-NEXT:    s_add_i32 s0, s0, -8
 ; GFX1010-NEXT:    v_mov_b32_e32 v2, 0
 ; GFX1010-NEXT:    v_mov_b32_e32 v0, s0
 ; GFX1010-NEXT:    s_load_dwordx2 s[0:1], s[4:5], 0x34
 ; GFX1010-NEXT:    ds_read_b32 v0, v0
-; GFX1010-NEXT:    ; s_wait_asyncmark(0)
+; GFX1010-NEXT:    ; wait_asyncmark(0)
 ; GFX1010-NEXT:    s_waitcnt vmcnt(0) lgkmcnt(0)
 ; GFX1010-NEXT:    v_add_nc_u32_e32 v0, v1, v0
 ; GFX1010-NEXT:    global_store_dword v2, v0, s[0:1]
@@ -563,7 +563,7 @@ define amdgpu_kernel void @test_pipelined_loop_with_global(ptr addrspace(1) %foo
 ; GFX900-NEXT:    s_mov_b32 m0, s8
 ; GFX900-NEXT:    s_add_u32 s4, s6, 4
 ; GFX900-NEXT:    global_load_dword v0, s[6:7] lds
-; GFX900-NEXT:    ; s_asyncmark
+; GFX900-NEXT:    ; asyncmark
 ; GFX900-NEXT:    global_load_dword v1, v0, s[6:7] offset:4
 ; GFX900-NEXT:    global_load_dword v2, v0, s[0:1] offset:4
 ; GFX900-NEXT:    s_addc_u32 s5, s7, 0
@@ -578,7 +578,7 @@ define amdgpu_kernel void @test_pipelined_loop_with_global(ptr addrspace(1) %foo
 ; GFX900-NEXT:    s_waitcnt lgkmcnt(0)
 ; GFX900-NEXT:    v_mov_b32_e32 v8, s13
 ; GFX900-NEXT:    v_mov_b32_e32 v7, s12
-; GFX900-NEXT:    ; s_asyncmark
+; GFX900-NEXT:    ; asyncmark
 ; GFX900-NEXT:    s_waitcnt vmcnt(2)
 ; GFX900-NEXT:    v_mov_b32_e32 v3, v1
 ; GFX900-NEXT:    s_waitcnt vmcnt(1)
@@ -593,8 +593,8 @@ define amdgpu_kernel void @test_pipelined_loop_with_global(ptr addrspace(1) %foo
 ; GFX900-NEXT:    s_add_i32 m0, s11, 8
 ; GFX900-NEXT:    v_mov_b32_e32 v9, s11
 ; GFX900-NEXT:    global_load_dword v0, s[6:7] lds
-; GFX900-NEXT:    ; s_asyncmark
-; GFX900-NEXT:    ; s_wait_asyncmark(2)
+; GFX900-NEXT:    ; asyncmark
+; GFX900-NEXT:    ; wait_asyncmark(2)
 ; GFX900-NEXT:    ds_read_b32 v9, v9
 ; GFX900-NEXT:    s_add_i32 s10, s10, 1
 ; GFX900-NEXT:    s_add_u32 s0, s0, 4
@@ -616,7 +616,7 @@ define amdgpu_kernel void @test_pipelined_loop_with_global(ptr addrspace(1) %foo
 ; GFX900-NEXT:    s_add_i32 s0, s9, -2
 ; GFX900-NEXT:    s_lshl2_add_u32 s1, s0, s8
 ; GFX900-NEXT:    v_mov_b32_e32 v0, s1
-; GFX900-NEXT:    ; s_wait_asyncmark(1)
+; GFX900-NEXT:    ; wait_asyncmark(1)
 ; GFX900-NEXT:    s_waitcnt vmcnt(4)
 ; GFX900-NEXT:    ds_read_b32 v1, v0
 ; GFX900-NEXT:    s_ashr_i32 s1, s0, 31
@@ -628,7 +628,7 @@ define amdgpu_kernel void @test_pipelined_loop_with_global(ptr addrspace(1) %foo
 ; GFX900-NEXT:    s_addc_u32 s1, s3, s1
 ; GFX900-NEXT:    v_mov_b32_e32 v2, 0
 ; GFX900-NEXT:    global_store_dword v2, v1, s[0:1]
-; GFX900-NEXT:    ; s_wait_asyncmark(0)
+; GFX900-NEXT:    ; wait_asyncmark(0)
 ; GFX900-NEXT:    s_waitcnt vmcnt(2)
 ; GFX900-NEXT:    ds_read_b32 v0, v0 offset:4
 ; GFX900-NEXT:    v_add_u32_e32 v1, v3, v4
@@ -651,7 +651,7 @@ define amdgpu_kernel void @test_pipelined_loop_with_global(ptr addrspace(1) %foo
 ; GFX942-NEXT:    s_mov_b32 m0, s8
 ; GFX942-NEXT:    s_add_u32 s4, s6, 4
 ; GFX942-NEXT:    global_load_lds_dword v0, s[6:7]
-; GFX942-NEXT:    ; s_asyncmark
+; GFX942-NEXT:    ; asyncmark
 ; GFX942-NEXT:    global_load_dword v1, v0, s[6:7] offset:4
 ; GFX942-NEXT:    global_load_dword v2, v0, s[0:1] offset:4
 ; GFX942-NEXT:    s_addc_u32 s5, s7, 0
@@ -666,7 +666,7 @@ define amdgpu_kernel void @test_pipelined_loop_with_global(ptr addrspace(1) %foo
 ; GFX942-NEXT:    s_waitcnt lgkmcnt(0)
 ; GFX942-NEXT:    v_mov_b32_e32 v8, s13
 ; GFX942-NEXT:    v_mov_b32_e32 v7, s12
-; GFX942-NEXT:    ; s_asyncmark
+; GFX942-NEXT:    ; asyncmark
 ; GFX942-NEXT:    s_waitcnt vmcnt(2)
 ; GFX942-NEXT:    v_mov_b32_e32 v3, v1
 ; GFX942-NEXT:    s_waitcnt vmcnt(1)
@@ -681,8 +681,8 @@ define amdgpu_kernel void @test_pipelined_loop_with_global(ptr addrspace(1) %foo
 ; GFX942-NEXT:    s_add_i32 m0, s11, 8
 ; GFX942-NEXT:    v_mov_b32_e32 v9, s11
 ; GFX942-NEXT:    global_load_lds_dword v0, s[6:7]
-; GFX942-NEXT:    ; s_asyncmark
-; GFX942-NEXT:    ; s_wait_asyncmark(2)
+; GFX942-NEXT:    ; asyncmark
+; GFX942-NEXT:    ; wait_asyncmark(2)
 ; GFX942-NEXT:    ds_read_b32 v9, v9
 ; GFX942-NEXT:    s_add_i32 s10, s10, 1
 ; GFX942-NEXT:    s_add_u32 s0, s0, 4
@@ -704,7 +704,7 @@ define amdgpu_kernel void @test_pipelined_loop_with_global(ptr addrspace(1) %foo
 ; GFX942-NEXT:    s_add_i32 s0, s9, -2
 ; GFX942-NEXT:    s_lshl2_add_u32 s1, s0, s8
 ; GFX942-NEXT:    v_mov_b32_e32 v0, s1
-; GFX942-NEXT:    ; s_wait_asyncmark(1)
+; GFX942-NEXT:    ; wait_asyncmark(1)
 ; GFX942-NEXT:    s_waitcnt vmcnt(4)
 ; GFX942-NEXT:    ds_read_b32 v1, v0
 ; GFX942-NEXT:    s_ashr_i32 s1, s0, 31
@@ -716,7 +716,7 @@ define amdgpu_kernel void @test_pipelined_loop_with_global(ptr addrspace(1) %foo
 ; GFX942-NEXT:    s_addc_u32 s1, s3, s1
 ; GFX942-NEXT:    v_mov_b32_e32 v2, 0
 ; GFX942-NEXT:    global_store_dword v2, v1, s[0:1]
-; GFX942-NEXT:    ; s_wait_asyncmark(0)
+; GFX942-NEXT:    ; wait_asyncmark(0)
 ; GFX942-NEXT:    s_waitcnt vmcnt(2)
 ; GFX942-NEXT:    ds_read_b32 v0, v0 offset:4
 ; GFX942-NEXT:    v_add_u32_e32 v1, v3, v4
@@ -739,7 +739,7 @@ define amdgpu_kernel void @test_pipelined_loop_with_global(ptr addrspace(1) %foo
 ; GFX1010-NEXT:    s_mov_b32 m0, s8
 ; GFX1010-NEXT:    s_add_u32 s4, s6, 4
 ; GFX1010-NEXT:    global_load_dword v0, s[6:7] lds
-; GFX1010-NEXT:    ; s_asyncmark
+; GFX1010-NEXT:    ; asyncmark
 ; GFX1010-NEXT:    s_clause 0x1
 ; GFX1010-NEXT:    global_load_dword v1, v0, s[6:7] offset:4
 ; GFX1010-NEXT:    global_load_dword v2, v0, s[0:1] offset:4
@@ -753,7 +753,7 @@ define amdgpu_kernel void @test_pipelined_loop_with_global(ptr addrspace(1) %foo
 ; GFX1010-NEXT:    s_add_u32 s4, s6, 8
 ; GFX1010-NEXT:    s_addc_u32 s5, s7, 0
 ; GFX1010-NEXT:    s_mov_b64 s[6:7], s[2:3]
-; GFX1010-NEXT:    ; s_asyncmark
+; GFX1010-NEXT:    ; asyncmark
 ; GFX1010-NEXT:    s_waitcnt lgkmcnt(0)
 ; GFX1010-NEXT:    v_mov_b32_e32 v7, s10
 ; GFX1010-NEXT:    v_mov_b32_e32 v8, s11
@@ -774,8 +774,8 @@ define amdgpu_kernel void @test_pipelined_loop_with_global(ptr addrspace(1) %foo
 ; GFX1010-NEXT:    global_load_dword v4, v0, s[0:1]
 ; GFX1010-NEXT:    global_load_dword v0, s[4:5] lds
 ; GFX1010-NEXT:    v_mov_b32_e32 v9, s11
-; GFX1010-NEXT:    ; s_asyncmark
-; GFX1010-NEXT:    ; s_wait_asyncmark(2)
+; GFX1010-NEXT:    ; asyncmark
+; GFX1010-NEXT:    ; wait_asyncmark(2)
 ; GFX1010-NEXT:    v_add_nc_u32_e32 v10, v7, v8
 ; GFX1010-NEXT:    s_add_i32 s10, s10, 1
 ; GFX1010-NEXT:    ds_read_b32 v9, v9
@@ -796,7 +796,7 @@ define amdgpu_kernel void @test_pipelined_loop_with_global(ptr addrspace(1) %foo
 ; GFX1010-NEXT:    s_cbranch_scc1 .LBB3_1
 ; GFX1010-NEXT:  ; %bb.2: ; %epilog
 ; GFX1010-NEXT:    s_add_i32 s0, s9, -2
-; GFX1010-NEXT:    ; s_wait_asyncmark(1)
+; GFX1010-NEXT:    ; wait_asyncmark(1)
 ; GFX1010-NEXT:    s_waitcnt vmcnt(3)
 ; GFX1010-NEXT:    s_lshl2_add_u32 s1, s0, s8
 ; GFX1010-NEXT:    v_add_nc_u32_e32 v2, v6, v5
@@ -811,7 +811,7 @@ define amdgpu_kernel void @test_pipelined_loop_with_global(ptr addrspace(1) %foo
 ; GFX1010-NEXT:    s_waitcnt lgkmcnt(0)
 ; GFX1010-NEXT:    v_add_nc_u32_e32 v1, v2, v1
 ; GFX1010-NEXT:    global_store_dword v5, v1, s[0:1]
-; GFX1010-NEXT:    ; s_wait_asyncmark(0)
+; GFX1010-NEXT:    ; wait_asyncmark(0)
 ; GFX1010-NEXT:    s_waitcnt vmcnt(0)
 ; GFX1010-NEXT:    ds_read_b32 v0, v0 offset:4
 ; GFX1010-NEXT:    v_add_nc_u32_e32 v1, v3, v4
