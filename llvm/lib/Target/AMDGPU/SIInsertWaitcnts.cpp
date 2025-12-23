@@ -458,7 +458,7 @@ private:
   DenseSet<MachineInstr *> ReleaseVGPRInsts;
 
   // Track legacy async instructions to later remove CPol::ASYNC_pregfx12
-  SmallVector<MachineInstr*> InstsWithAsyncCpolBit;
+  SmallVector<MachineInstr *> InstsWithAsyncCpolBit;
 
   HardwareLimits Limits;
 
@@ -2371,8 +2371,8 @@ bool SIInsertWaitcnts::generateWaitcntInstBefore(MachineInstr &MI,
   if (ForceEmitZeroLoadFlag && Wait.LoadCnt != ~0u)
     Wait.LoadCnt = 0;
 
-  return generateWaitcnt(Wait, MI.getIterator(), *MI.getParent(),
-                         ScoreBrackets, OldWaitcntInstr);
+  return generateWaitcnt(Wait, MI.getIterator(), *MI.getParent(), ScoreBrackets,
+                         OldWaitcntInstr);
 }
 
 bool SIInsertWaitcnts::generateWaitcnt(AMDGPU::Waitcnt Wait,
