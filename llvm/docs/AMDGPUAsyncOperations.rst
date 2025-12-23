@@ -71,11 +71,11 @@ non-atomic write on the destination. Legacy "LDS DMA" intrinsics result in async
 accesses that guarantee visibility relative to other memory operations as
 follows:
 
-  The side-effects of an asynchronous operation `A` program ordered before any
-  memory operation `X` are visible to `X` if `A` is completed before `X`.
+  An asynchronous operation `A` program ordered before an overlapping memory
+  operation `X` happens-before `X` if `A` is completed before `X`.
 
-  The side-effects of any memory operation `X` program ordered before an
-  asynchronous operation `A` are visible to `A`.
+  A memory operation `X` program ordered before an overlapping asynchronous
+  operation `A` happens-before `A`.
 
 Function calls in LLVM
 ======================
