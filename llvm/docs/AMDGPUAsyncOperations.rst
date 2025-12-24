@@ -86,9 +86,8 @@ async operations while entering or returning from a function call.
 .. note::
 
    As long as the caller uses sufficient waitcnts to track its own async
-   operations, the actions performed by the callee cannot affect correctness.
-   But the resulting implementation may contain redundant waits, which can be
-   improved by setting the attribute to a value other than `async:unknown`.
+   operations, the actions performed by the callee cannot affect correctness,
+   but the resulting implementation may contain redundant waits.
 
 Examples
 ========
