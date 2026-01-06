@@ -3,131 +3,152 @@
 ; RUN: llc -march=amdgcn -mcpu=gfx942  < %s | FileCheck %s -check-prefixes=GFX942
 ; RUN: llc -march=amdgcn -mcpu=gfx1010 < %s | FileCheck %s -check-prefixes=GFX1010
 
+; Demonstrate that wait.asyncmark acts as a code motion barrier loads from LDS.
+; The test is non-sensical because (a) there are no markers, and (b) adjacent
+; LDS locations are usually written by the same async load from global. But it's
+; the simplest demo possible.
+
+define void @code_barrier(ptr addrspace(1) %foo, ptr addrspace(3) %lds, ptr addrspace(3) %out) {
+; GFX900-LABEL: code_barrier:
+; GFX900:       ; %bb.0:
+; GFX900-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; GFX900-NEXT:    ds_read_b32 v0, v2
+; GFX900-NEXT:    ; wait_asyncmark(0)
+; GFX900-NEXT:    ds_read_b32 v1, v2 offset:4
+; GFX900-NEXT:    s_waitcnt lgkmcnt(0)
+; GFX900-NEXT:    v_add_u32_e32 v0, v0, v1
+; GFX900-NEXT:    ds_write_b32 v3, v0
+; GFX900-NEXT:    s_waitcnt lgkmcnt(0)
+; GFX900-NEXT:    s_setpc_b64 s[30:31]
+;
+; GFX942-LABEL: code_barrier:
+; GFX942:       ; %bb.0:
+; GFX942-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; GFX942-NEXT:    ds_read_b32 v0, v2
+; GFX942-NEXT:    ; wait_asyncmark(0)
+; GFX942-NEXT:    ds_read_b32 v1, v2 offset:4
+; GFX942-NEXT:    s_waitcnt lgkmcnt(0)
+; GFX942-NEXT:    v_add_u32_e32 v0, v0, v1
+; GFX942-NEXT:    ds_write_b32 v3, v0
+; GFX942-NEXT:    s_waitcnt lgkmcnt(0)
+; GFX942-NEXT:    s_setpc_b64 s[30:31]
+;
+; GFX1010-LABEL: code_barrier:
+; GFX1010:       ; %bb.0:
+; GFX1010-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; GFX1010-NEXT:    ds_read_b32 v0, v2
+; GFX1010-NEXT:    ; wait_asyncmark(0)
+; GFX1010-NEXT:    ds_read_b32 v1, v2 offset:4
+; GFX1010-NEXT:    s_waitcnt lgkmcnt(0)
+; GFX1010-NEXT:    v_add_nc_u32_e32 v0, v0, v1
+; GFX1010-NEXT:    ds_write_b32 v3, v0
+; GFX1010-NEXT:    s_waitcnt lgkmcnt(0)
+; GFX1010-NEXT:    s_setpc_b64 s[30:31]
+  %lds_gep1 = getelementptr i32, ptr addrspace(3) %lds, i32 1
+  %val1 = load i32, ptr addrspace(3) %lds
+  call void @llvm.amdgcn.wait.asyncmark(i16 0)
+  %val2 = load i32, ptr addrspace(3) %lds_gep1
+  %sum = add i32 %val1, %val2
+  store i32 %sum, ptr addrspace(3) %out
+  ret void
+}
+
 ; Test async mark/wait with global_load_lds and global loads
 ; This version uses wave barriers to enforce program order so that unrelated vmem
 ; instructions do not get reordered before reaching this point.
 
-define void @interleaved_with_wave_barrier(ptr addrspace(1) %foo, ptr addrspace(3) %lds, ptr addrspace(1) %bar, ptr addrspace(1) %out) {
-; GFX900-LABEL: interleaved_with_wave_barrier:
+define void @interleaved_global_and_dma(ptr addrspace(1) %foo, ptr addrspace(3) %lds, ptr addrspace(1) %bar, ptr addrspace(1) %out) {
+; GFX900-LABEL: interleaved_global_and_dma:
 ; GFX900:       ; %bb.0: ; %entry
 ; GFX900-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; GFX900-NEXT:    s_movk_i32 s4, 0x54
-; GFX900-NEXT:    v_add_u32_e32 v11, 0x54, v2
-; GFX900-NEXT:    v_add_co_u32_e32 v7, vcc, s4, v0
-; GFX900-NEXT:    v_readfirstlane_b32 s4, v11
-; GFX900-NEXT:    v_addc_co_u32_e32 v8, vcc, 0, v1, vcc
-; GFX900-NEXT:    s_mov_b32 m0, s4
-; GFX900-NEXT:    global_load_dword v9, v[3:4], off offset:44
-; GFX900-NEXT:    global_load_dword v10, v[0:1], off offset:4
-; GFX900-NEXT:    ; wave barrier
-; GFX900-NEXT:    s_movk_i32 s4, 0x58
-; GFX900-NEXT:    global_load_dword v[7:8], off glc lds
-; GFX900-NEXT:    v_add_u32_e32 v8, 0x58, v2
-; GFX900-NEXT:    ; wave barrier
-; GFX900-NEXT:    ; asyncmark
-; GFX900-NEXT:    global_load_dword v7, v[0:1], off offset:8
-; GFX900-NEXT:    v_add_co_u32_e32 v0, vcc, s4, v3
-; GFX900-NEXT:    v_readfirstlane_b32 s4, v8
-; GFX900-NEXT:    v_addc_co_u32_e32 v1, vcc, 0, v4, vcc
+; GFX900-NEXT:    v_readfirstlane_b32 s4, v2
+; GFX900-NEXT:    global_load_dword v7, v[3:4], off
+; GFX900-NEXT:    global_load_dword v8, v[0:1], off
 ; GFX900-NEXT:    s_mov_b32 m0, s4
 ; GFX900-NEXT:    ; wave barrier
 ; GFX900-NEXT:    s_nop 0
-; GFX900-NEXT:    global_load_dword v[0:1], off glc slc lds
+; GFX900-NEXT:    global_load_dword v[3:4], off glc lds
+; GFX900-NEXT:    ; asyncmark
+; GFX900-NEXT:    global_load_dword v0, v[0:1], off
 ; GFX900-NEXT:    ; wave barrier
-; GFX900-NEXT:    global_load_dword v0, v[3:4], off offset:48
+; GFX900-NEXT:    s_nop 0
+; GFX900-NEXT:    global_load_dword v[3:4], off glc slc lds
+; GFX900-NEXT:    ; wave barrier
+; GFX900-NEXT:    global_load_dword v1, v[3:4], off
 ; GFX900-NEXT:    ; asyncmark
 ; GFX900-NEXT:    ; wait_asyncmark(1)
 ; GFX900-NEXT:    s_waitcnt vmcnt(3)
-; GFX900-NEXT:    ds_read_b32 v1, v2 offset:84
+; GFX900-NEXT:    ds_read_b32 v3, v2
 ; GFX900-NEXT:    ; wait_asyncmark(0)
 ; GFX900-NEXT:    s_waitcnt vmcnt(1)
-; GFX900-NEXT:    ds_read_b32 v2, v2 offset:88
-; GFX900-NEXT:    v_add_u32_e32 v3, v10, v9
+; GFX900-NEXT:    ds_read_b32 v2, v2
+; GFX900-NEXT:    v_add_u32_e32 v4, v8, v7
 ; GFX900-NEXT:    s_waitcnt lgkmcnt(1)
-; GFX900-NEXT:    v_add3_u32 v1, v3, v1, v7
+; GFX900-NEXT:    v_add3_u32 v0, v4, v3, v0
 ; GFX900-NEXT:    s_waitcnt vmcnt(0) lgkmcnt(0)
-; GFX900-NEXT:    v_add3_u32 v0, v1, v0, v2
+; GFX900-NEXT:    v_add3_u32 v0, v0, v1, v2
 ; GFX900-NEXT:    global_store_dword v[5:6], v0, off
 ; GFX900-NEXT:    s_waitcnt vmcnt(0)
 ; GFX900-NEXT:    s_setpc_b64 s[30:31]
 ;
-; GFX942-LABEL: interleaved_with_wave_barrier:
+; GFX942-LABEL: interleaved_global_and_dma:
 ; GFX942:       ; %bb.0: ; %entry
 ; GFX942-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; GFX942-NEXT:    v_add_u32_e32 v11, 0x54, v2
-; GFX942-NEXT:    s_mov_b64 s[0:1], 0x54
-; GFX942-NEXT:    v_mov_b32_e32 v7, v6
 ; GFX942-NEXT:    v_mov_b32_e32 v9, v4
-; GFX942-NEXT:    v_mov_b32_e32 v6, v5
-; GFX942-NEXT:    v_lshl_add_u64 v[4:5], v[0:1], 0, s[0:1]
-; GFX942-NEXT:    v_readfirstlane_b32 s0, v11
 ; GFX942-NEXT:    v_mov_b32_e32 v8, v3
+; GFX942-NEXT:    v_readfirstlane_b32 s0, v2
+; GFX942-NEXT:    global_load_dword v3, v[8:9], off
+; GFX942-NEXT:    global_load_dword v4, v[0:1], off
 ; GFX942-NEXT:    s_mov_b32 m0, s0
-; GFX942-NEXT:    global_load_dword v3, v[8:9], off offset:44
-; GFX942-NEXT:    global_load_dword v10, v[0:1], off offset:4
 ; GFX942-NEXT:    ; wave barrier
-; GFX942-NEXT:    s_mov_b64 s[0:1], 0x58
-; GFX942-NEXT:    global_load_lds_dword v[4:5], off sc0
-; GFX942-NEXT:    v_add_u32_e32 v5, 0x58, v2
-; GFX942-NEXT:    ; wave barrier
+; GFX942-NEXT:    v_mov_b32_e32 v7, v6
+; GFX942-NEXT:    global_load_lds_dword v[8:9], off sc0
 ; GFX942-NEXT:    ; asyncmark
-; GFX942-NEXT:    global_load_dword v4, v[0:1], off offset:8
-; GFX942-NEXT:    v_lshl_add_u64 v[0:1], v[8:9], 0, s[0:1]
-; GFX942-NEXT:    v_readfirstlane_b32 s0, v5
-; GFX942-NEXT:    s_mov_b32 m0, s0
+; GFX942-NEXT:    global_load_dword v0, v[0:1], off
 ; GFX942-NEXT:    ; wave barrier
-; GFX942-NEXT:    s_waitcnt vmcnt(2)
-; GFX942-NEXT:    v_add_u32_e32 v3, v10, v3
-; GFX942-NEXT:    global_load_lds_dword v[0:1], off sc0 nt
+; GFX942-NEXT:    v_mov_b32_e32 v6, v5
+; GFX942-NEXT:    global_load_lds_dword v[8:9], off sc0 nt
 ; GFX942-NEXT:    ; wave barrier
-; GFX942-NEXT:    global_load_dword v0, v[8:9], off offset:48
+; GFX942-NEXT:    global_load_dword v1, v[8:9], off
 ; GFX942-NEXT:    ; asyncmark
 ; GFX942-NEXT:    ; wait_asyncmark(1)
 ; GFX942-NEXT:    s_waitcnt vmcnt(3)
-; GFX942-NEXT:    ds_read_b32 v1, v2 offset:84
+; GFX942-NEXT:    ds_read_b32 v5, v2
 ; GFX942-NEXT:    ; wait_asyncmark(0)
 ; GFX942-NEXT:    s_waitcnt vmcnt(1)
-; GFX942-NEXT:    ds_read_b32 v2, v2 offset:88
+; GFX942-NEXT:    ds_read_b32 v2, v2
+; GFX942-NEXT:    v_add_u32_e32 v3, v4, v3
 ; GFX942-NEXT:    s_waitcnt lgkmcnt(1)
-; GFX942-NEXT:    v_add3_u32 v1, v3, v1, v4
+; GFX942-NEXT:    v_add3_u32 v0, v3, v5, v0
 ; GFX942-NEXT:    s_waitcnt vmcnt(0) lgkmcnt(0)
-; GFX942-NEXT:    v_add3_u32 v0, v1, v0, v2
+; GFX942-NEXT:    v_add3_u32 v0, v0, v1, v2
 ; GFX942-NEXT:    global_store_dword v[6:7], v0, off
 ; GFX942-NEXT:    s_waitcnt vmcnt(0)
 ; GFX942-NEXT:    s_setpc_b64 s[30:31]
 ;
-; GFX1010-LABEL: interleaved_with_wave_barrier:
+; GFX1010-LABEL: interleaved_global_and_dma:
 ; GFX1010:       ; %bb.0: ; %entry
 ; GFX1010-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; GFX1010-NEXT:    v_add_nc_u32_e32 v7, 0x54, v2
-; GFX1010-NEXT:    v_add_nc_u32_e32 v11, 0x58, v2
-; GFX1010-NEXT:    global_load_dword v9, v[3:4], off offset:44
-; GFX1010-NEXT:    global_load_dword v10, v[0:1], off offset:4
+; GFX1010-NEXT:    v_readfirstlane_b32 s4, v2
+; GFX1010-NEXT:    global_load_dword v7, v[3:4], off
+; GFX1010-NEXT:    global_load_dword v8, v[0:1], off
 ; GFX1010-NEXT:    ; wave barrier
-; GFX1010-NEXT:    v_readfirstlane_b32 s4, v7
-; GFX1010-NEXT:    v_add_co_u32 v7, vcc_lo, 0x54, v0
-; GFX1010-NEXT:    v_add_co_ci_u32_e32 v8, vcc_lo, 0, v1, vcc_lo
 ; GFX1010-NEXT:    s_mov_b32 m0, s4
-; GFX1010-NEXT:    v_readfirstlane_b32 s4, v11
-; GFX1010-NEXT:    global_load_dword v[7:8], off glc lds
-; GFX1010-NEXT:    v_add_co_u32 v7, vcc_lo, 0x58, v3
-; GFX1010-NEXT:    ; wave barrier
+; GFX1010-NEXT:    global_load_dword v[3:4], off glc lds
 ; GFX1010-NEXT:    ; asyncmark
-; GFX1010-NEXT:    v_add_co_ci_u32_e32 v8, vcc_lo, 0, v4, vcc_lo
-; GFX1010-NEXT:    global_load_dword v0, v[0:1], off offset:8
-; GFX1010-NEXT:    s_mov_b32 m0, s4
+; GFX1010-NEXT:    global_load_dword v0, v[0:1], off
 ; GFX1010-NEXT:    ; wave barrier
-; GFX1010-NEXT:    global_load_dword v[7:8], off glc slc lds
+; GFX1010-NEXT:    global_load_dword v[3:4], off glc slc lds
 ; GFX1010-NEXT:    ; wave barrier
-; GFX1010-NEXT:    global_load_dword v1, v[3:4], off offset:48
+; GFX1010-NEXT:    global_load_dword v1, v[3:4], off
 ; GFX1010-NEXT:    ; asyncmark
 ; GFX1010-NEXT:    ; wait_asyncmark(1)
 ; GFX1010-NEXT:    s_waitcnt vmcnt(3)
-; GFX1010-NEXT:    ds_read_b32 v3, v2 offset:84
+; GFX1010-NEXT:    ds_read_b32 v3, v2
 ; GFX1010-NEXT:    ; wait_asyncmark(0)
 ; GFX1010-NEXT:    s_waitcnt vmcnt(1)
-; GFX1010-NEXT:    ds_read_b32 v2, v2 offset:88
-; GFX1010-NEXT:    v_add_nc_u32_e32 v4, v10, v9
+; GFX1010-NEXT:    ds_read_b32 v2, v2
+; GFX1010-NEXT:    v_add_nc_u32_e32 v4, v8, v7
 ; GFX1010-NEXT:    s_waitcnt lgkmcnt(1)
 ; GFX1010-NEXT:    v_add3_u32 v0, v4, v3, v0
 ; GFX1010-NEXT:    s_waitcnt vmcnt(0) lgkmcnt(0)
@@ -136,39 +157,29 @@ define void @interleaved_with_wave_barrier(ptr addrspace(1) %foo, ptr addrspace(
 ; GFX1010-NEXT:    s_setpc_b64 s[30:31]
 entry:
   ; First batch: global load, global load, async global-to-LDS
-  %bar_gep11 = getelementptr i32, ptr addrspace(1) %bar, i32 11
-  %bar_v11 = load i32, ptr addrspace(1) %bar_gep11
-  %foo_gep1 = getelementptr i32, ptr addrspace(1) %foo, i32 1
-  %foo_v1 = load i32, ptr addrspace(1) %foo_gep1
-  %lds_gep21 = getelementptr i32, ptr addrspace(3) %lds, i32 21
-  %bar_gep21 = getelementptr i32, ptr addrspace(1) %foo, i32 21
+  %bar_v11 = load i32, ptr addrspace(1) %bar
+  %foo_v1 = load i32, ptr addrspace(1) %foo
   call void @llvm.amdgcn.wave.barrier()
-  call void @llvm.amdgcn.global.load.lds(ptr addrspace(1) %bar_gep21, ptr addrspace(3) %lds_gep21, i32 4, i32 0, i32 u0x21)
-  call void @llvm.amdgcn.wave.barrier()
+  call void @llvm.amdgcn.global.load.lds(ptr addrspace(1) %bar, ptr addrspace(3) %lds, i32 4, i32 0, i32 u0x21)
   call void @llvm.amdgcn.asyncmark()
 
   ; Second batch: global load, async global-to-LDS, global load
-  %foo_gep2 = getelementptr i32, ptr addrspace(1) %foo, i32 2
-  %foo_v2 = load i32, ptr addrspace(1) %foo_gep2
-  %bar_gep22 = getelementptr i32, ptr addrspace(1) %bar, i32 22
-  %lds_gep22 = getelementptr i32, ptr addrspace(3) %lds, i32 22
+  %foo_v2 = load i32, ptr addrspace(1) %foo
   call void @llvm.amdgcn.wave.barrier()
-  call void @llvm.amdgcn.global.load.lds(ptr addrspace(1) %bar_gep22, ptr addrspace(3) %lds_gep22, i32 4, i32 0, i32 u0x23)
+  call void @llvm.amdgcn.global.load.lds(ptr addrspace(1) %bar, ptr addrspace(3) %lds, i32 4, i32 0, i32 u0x23)
   call void @llvm.amdgcn.wave.barrier()
-  %bar_gep12 = getelementptr i32, ptr addrspace(1) %bar, i32 12
-  %bar_v12 = load i32, ptr addrspace(1) %bar_gep12
+  %bar_v12 = load i32, ptr addrspace(1) %bar
   call void @llvm.amdgcn.asyncmark()
 
   ; Wait for first async mark and read from LDS
   ; This results in vmcnt(3) corresponding to the second batch.
   call void @llvm.amdgcn.wait.asyncmark(i16 1)
-  %lds_val21 = load i32, ptr addrspace(3) %lds_gep21
+  %lds_val21 = load i32, ptr addrspace(3) %lds
 
   ; Wait for the next lds dma
   ; This results in vmcnt(1), corresponding to %bar_v12. Could have been combined with the lgkmcnt(1) for %lds_val21.
-  ; Notable that the asyncmark is sufficient to prevent the optimizer from coalescing the previous ds_read with the next one.
   call void @llvm.amdgcn.wait.asyncmark(i16 0)
-  %lds_val22 = load i32, ptr addrspace(3) %lds_gep22
+  %lds_val22 = load i32, ptr addrspace(3) %lds
   %sum1 = add i32 %foo_v1, %bar_v11
   %sum2 = add i32 %sum1, %lds_val21
   %sum3 = add i32 %sum2, %foo_v2
@@ -180,33 +191,31 @@ entry:
   ret void
 }
 
-define void @buffers_with_wave_barrier(ptr addrspace(8) inreg %buf, ptr addrspace(1) %foo, ptr addrspace(3) inreg %lds, ptr addrspace(1) %bar, ptr addrspace(1) %out) {
-; GFX900-LABEL: buffers_with_wave_barrier:
+define void @interleaved_buffer_and_dma(ptr addrspace(8) inreg %buf, ptr addrspace(1) %foo, ptr addrspace(3) inreg %lds, ptr addrspace(1) %bar, ptr addrspace(1) %out) {
+; GFX900-LABEL: interleaved_buffer_and_dma:
 ; GFX900:       ; %bb.0: ; %entry
 ; GFX900-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; GFX900-NEXT:    global_load_dword v6, v[2:3], off offset:44
-; GFX900-NEXT:    global_load_dword v7, v[0:1], off offset:4
-; GFX900-NEXT:    s_add_i32 m0, s20, 0x54
+; GFX900-NEXT:    s_mov_b32 m0, s20
+; GFX900-NEXT:    global_load_dword v6, v[2:3], off
+; GFX900-NEXT:    global_load_dword v7, v[0:1], off
 ; GFX900-NEXT:    v_mov_b32_e32 v8, 0x54
 ; GFX900-NEXT:    ; wave barrier
 ; GFX900-NEXT:    buffer_load_dword v8, s[16:19], 0 offen lds
-; GFX900-NEXT:    ; wave barrier
 ; GFX900-NEXT:    ; asyncmark
-; GFX900-NEXT:    global_load_dword v0, v[0:1], off offset:8
-; GFX900-NEXT:    s_add_i32 m0, s20, 0x58
+; GFX900-NEXT:    global_load_dword v0, v[0:1], off
 ; GFX900-NEXT:    v_mov_b32_e32 v1, 0x58
 ; GFX900-NEXT:    ; wave barrier
 ; GFX900-NEXT:    buffer_load_dword v1, s[16:19], 0 offen lds
 ; GFX900-NEXT:    ; wave barrier
-; GFX900-NEXT:    global_load_dword v1, v[2:3], off offset:48
+; GFX900-NEXT:    global_load_dword v1, v[2:3], off
 ; GFX900-NEXT:    v_mov_b32_e32 v2, s20
 ; GFX900-NEXT:    ; asyncmark
 ; GFX900-NEXT:    ; wait_asyncmark(1)
 ; GFX900-NEXT:    s_waitcnt vmcnt(3)
-; GFX900-NEXT:    ds_read_b32 v3, v2 offset:84
+; GFX900-NEXT:    ds_read_b32 v3, v2
 ; GFX900-NEXT:    ; wait_asyncmark(0)
 ; GFX900-NEXT:    s_waitcnt vmcnt(1)
-; GFX900-NEXT:    ds_read_b32 v2, v2 offset:88
+; GFX900-NEXT:    ds_read_b32 v2, v2
 ; GFX900-NEXT:    v_add_u32_e32 v6, v7, v6
 ; GFX900-NEXT:    s_waitcnt lgkmcnt(1)
 ; GFX900-NEXT:    v_add3_u32 v0, v6, v3, v0
@@ -216,32 +225,30 @@ define void @buffers_with_wave_barrier(ptr addrspace(8) inreg %buf, ptr addrspac
 ; GFX900-NEXT:    s_waitcnt vmcnt(0)
 ; GFX900-NEXT:    s_setpc_b64 s[30:31]
 ;
-; GFX942-LABEL: buffers_with_wave_barrier:
+; GFX942-LABEL: interleaved_buffer_and_dma:
 ; GFX942:       ; %bb.0: ; %entry
 ; GFX942-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; GFX942-NEXT:    global_load_dword v6, v[2:3], off offset:44
-; GFX942-NEXT:    global_load_dword v7, v[0:1], off offset:4
-; GFX942-NEXT:    s_add_i32 m0, s16, 0x54
+; GFX942-NEXT:    s_mov_b32 m0, s16
+; GFX942-NEXT:    global_load_dword v6, v[2:3], off
+; GFX942-NEXT:    global_load_dword v7, v[0:1], off
 ; GFX942-NEXT:    v_mov_b32_e32 v8, 0x54
 ; GFX942-NEXT:    ; wave barrier
 ; GFX942-NEXT:    buffer_load_dword v8, s[0:3], 0 offen lds
-; GFX942-NEXT:    ; wave barrier
 ; GFX942-NEXT:    ; asyncmark
-; GFX942-NEXT:    global_load_dword v0, v[0:1], off offset:8
-; GFX942-NEXT:    s_add_i32 m0, s16, 0x58
+; GFX942-NEXT:    global_load_dword v0, v[0:1], off
 ; GFX942-NEXT:    v_mov_b32_e32 v1, 0x58
 ; GFX942-NEXT:    ; wave barrier
 ; GFX942-NEXT:    buffer_load_dword v1, s[0:3], 0 offen lds
 ; GFX942-NEXT:    ; wave barrier
-; GFX942-NEXT:    global_load_dword v1, v[2:3], off offset:48
+; GFX942-NEXT:    global_load_dword v1, v[2:3], off
 ; GFX942-NEXT:    v_mov_b32_e32 v2, s16
 ; GFX942-NEXT:    ; asyncmark
 ; GFX942-NEXT:    ; wait_asyncmark(1)
 ; GFX942-NEXT:    s_waitcnt vmcnt(3)
-; GFX942-NEXT:    ds_read_b32 v3, v2 offset:84
+; GFX942-NEXT:    ds_read_b32 v3, v2
 ; GFX942-NEXT:    ; wait_asyncmark(0)
 ; GFX942-NEXT:    s_waitcnt vmcnt(1)
-; GFX942-NEXT:    ds_read_b32 v2, v2 offset:88
+; GFX942-NEXT:    ds_read_b32 v2, v2
 ; GFX942-NEXT:    v_add_u32_e32 v6, v7, v6
 ; GFX942-NEXT:    s_waitcnt lgkmcnt(1)
 ; GFX942-NEXT:    v_add3_u32 v0, v6, v3, v0
@@ -251,32 +258,30 @@ define void @buffers_with_wave_barrier(ptr addrspace(8) inreg %buf, ptr addrspac
 ; GFX942-NEXT:    s_waitcnt vmcnt(0)
 ; GFX942-NEXT:    s_setpc_b64 s[30:31]
 ;
-; GFX1010-LABEL: buffers_with_wave_barrier:
+; GFX1010-LABEL: interleaved_buffer_and_dma:
 ; GFX1010:       ; %bb.0: ; %entry
 ; GFX1010-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
 ; GFX1010-NEXT:    v_mov_b32_e32 v6, 0x54
-; GFX1010-NEXT:    global_load_dword v7, v[2:3], off offset:44
-; GFX1010-NEXT:    global_load_dword v8, v[0:1], off offset:4
-; GFX1010-NEXT:    s_add_i32 m0, s20, 0x54
+; GFX1010-NEXT:    global_load_dword v7, v[2:3], off
+; GFX1010-NEXT:    global_load_dword v8, v[0:1], off
+; GFX1010-NEXT:    s_mov_b32 m0, s20
 ; GFX1010-NEXT:    ; wave barrier
 ; GFX1010-NEXT:    buffer_load_dword v6, s[16:19], 0 offen lds
-; GFX1010-NEXT:    ; wave barrier
 ; GFX1010-NEXT:    ; asyncmark
 ; GFX1010-NEXT:    v_mov_b32_e32 v6, 0x58
-; GFX1010-NEXT:    global_load_dword v0, v[0:1], off offset:8
-; GFX1010-NEXT:    s_add_i32 m0, s20, 0x58
+; GFX1010-NEXT:    global_load_dword v0, v[0:1], off
 ; GFX1010-NEXT:    ; wave barrier
 ; GFX1010-NEXT:    buffer_load_dword v6, s[16:19], 0 offen lds
 ; GFX1010-NEXT:    ; wave barrier
-; GFX1010-NEXT:    global_load_dword v1, v[2:3], off offset:48
+; GFX1010-NEXT:    global_load_dword v1, v[2:3], off
 ; GFX1010-NEXT:    v_mov_b32_e32 v2, s20
 ; GFX1010-NEXT:    ; asyncmark
 ; GFX1010-NEXT:    ; wait_asyncmark(1)
 ; GFX1010-NEXT:    s_waitcnt vmcnt(3)
-; GFX1010-NEXT:    ds_read_b32 v3, v2 offset:84
+; GFX1010-NEXT:    ds_read_b32 v3, v2
 ; GFX1010-NEXT:    ; wait_asyncmark(0)
 ; GFX1010-NEXT:    s_waitcnt vmcnt(1)
-; GFX1010-NEXT:    ds_read_b32 v2, v2 offset:88
+; GFX1010-NEXT:    ds_read_b32 v2, v2
 ; GFX1010-NEXT:    v_add_nc_u32_e32 v6, v8, v7
 ; GFX1010-NEXT:    s_waitcnt lgkmcnt(1)
 ; GFX1010-NEXT:    v_add3_u32 v0, v6, v3, v0
@@ -286,36 +291,29 @@ define void @buffers_with_wave_barrier(ptr addrspace(8) inreg %buf, ptr addrspac
 ; GFX1010-NEXT:    s_setpc_b64 s[30:31]
 entry:
   ; First batch: global load, global load, async global-to-LDS.
-  %bar_gep11 = getelementptr i32, ptr addrspace(1) %bar, i32 11
-  %bar_v11 = load i32, ptr addrspace(1) %bar_gep11
-  %foo_gep1 = getelementptr i32, ptr addrspace(1) %foo, i32 1
-  %foo_v1 = load i32, ptr addrspace(1) %foo_gep1
-  %lds_gep21 = getelementptr i32, ptr addrspace(3) %lds, i32 21
+  %bar_v11 = load i32, ptr addrspace(1) %bar
+  %foo_v1 = load i32, ptr addrspace(1) %foo
   call void @llvm.amdgcn.wave.barrier()
-  call void @llvm.amdgcn.raw.ptr.buffer.load.lds(ptr addrspace(8) %buf, ptr addrspace(3) %lds_gep21, i32 4, i32 84, i32 0, i32 0, i32 u0x20)
-  call void @llvm.amdgcn.wave.barrier()
+  call void @llvm.amdgcn.raw.ptr.buffer.load.lds(ptr addrspace(8) %buf, ptr addrspace(3) %lds, i32 4, i32 84, i32 0, i32 0, i32 u0x20)
   call void @llvm.amdgcn.asyncmark()
 
   ; Second batch: global load, async global-to-LDS, global load.
-  %foo_gep2 = getelementptr i32, ptr addrspace(1) %foo, i32 2
-  %foo_v2 = load i32, ptr addrspace(1) %foo_gep2
-  %lds_gep22 = getelementptr i32, ptr addrspace(3) %lds, i32 22
+  %foo_v2 = load i32, ptr addrspace(1) %foo
   call void @llvm.amdgcn.wave.barrier()
-  call void @llvm.amdgcn.raw.ptr.buffer.load.lds(ptr addrspace(8) %buf, ptr addrspace(3) %lds_gep22, i32 4, i32 88, i32 0, i32 0, i32 u0x20)
+  call void @llvm.amdgcn.raw.ptr.buffer.load.lds(ptr addrspace(8) %buf, ptr addrspace(3) %lds, i32 4, i32 88, i32 0, i32 0, i32 u0x20)
   call void @llvm.amdgcn.wave.barrier()
-  %bar_gep12 = getelementptr i32, ptr addrspace(1) %bar, i32 12
-  %bar_v12 = load i32, ptr addrspace(1) %bar_gep12
+  %bar_v12 = load i32, ptr addrspace(1) %bar
   call void @llvm.amdgcn.asyncmark()
 
   ; Wait for first async mark and read from LDS.
   ; This results in vmcnt(3) corresponding to the second batch.
   call void @llvm.amdgcn.wait.asyncmark(i16 1)
-  %lds_val21 = load i32, ptr addrspace(3) %lds_gep21
+  %lds_val21 = load i32, ptr addrspace(3) %lds
 
   ; Wait for the next lds dma.
   ; This results in vmcnt(1) because the last global load is not async.
   call void @llvm.amdgcn.wait.asyncmark(i16 0)
-  %lds_val22 = load i32, ptr addrspace(3) %lds_gep22
+  %lds_val22 = load i32, ptr addrspace(3) %lds
   %sum1 = add i32 %foo_v1, %bar_v11
   %sum2 = add i32 %sum1, %lds_val21
   %sum3 = add i32 %sum2, %foo_v2
@@ -330,177 +328,134 @@ entry:
 ; DMA operations, and result in vmcnt waits that exactly match the stream of
 ; those outstanding operations.
 
-define amdgpu_kernel void @test_pipelined_loop(ptr addrspace(1) %foo, ptr addrspace(3) %lds, ptr addrspace(1) %bar, ptr addrspace(1) %out, i32 %n) {
+define void @test_pipelined_loop(ptr addrspace(1) %foo, ptr addrspace(3) %lds, ptr addrspace(1) %bar, ptr addrspace(1) %out, i32 %n) {
 ; GFX900-LABEL: test_pipelined_loop:
 ; GFX900:       ; %bb.0: ; %prolog
-; GFX900-NEXT:    s_load_dword s2, s[4:5], 0x2c
-; GFX900-NEXT:    s_load_dwordx2 s[0:1], s[4:5], 0x24
-; GFX900-NEXT:    v_mov_b32_e32 v0, 0
-; GFX900-NEXT:    s_load_dword s3, s[4:5], 0x44
-; GFX900-NEXT:    v_mov_b32_e32 v1, 0
-; GFX900-NEXT:    s_waitcnt lgkmcnt(0)
-; GFX900-NEXT:    s_mov_b32 m0, s2
-; GFX900-NEXT:    s_nop 0
-; GFX900-NEXT:    global_load_dword v0, s[0:1] lds
-; GFX900-NEXT:    s_add_i32 m0, s2, 4
-; GFX900-NEXT:    s_add_u32 s6, s0, 4
-; GFX900-NEXT:    s_addc_u32 s7, s1, 0
+; GFX900-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; GFX900-NEXT:    v_readfirstlane_b32 s4, v2
+; GFX900-NEXT:    s_mov_b32 m0, s4
+; GFX900-NEXT:    v_mov_b32_e32 v5, 0
+; GFX900-NEXT:    global_load_dword v[0:1], off lds
 ; GFX900-NEXT:    ; asyncmark
-; GFX900-NEXT:    global_load_dword v0, s[6:7] lds
-; GFX900-NEXT:    s_add_u32 s0, s0, 8
-; GFX900-NEXT:    s_addc_u32 s1, s1, 0
+; GFX900-NEXT:    global_load_dword v[0:1], off lds
 ; GFX900-NEXT:    s_mov_b32 s6, 2
-; GFX900-NEXT:    s_mov_b32 s7, s2
+; GFX900-NEXT:    s_mov_b64 s[4:5], 0
 ; GFX900-NEXT:    ; asyncmark
-; GFX900-NEXT:  .LBB2_1: ; %loop_body
+; GFX900-NEXT:  .LBB3_1: ; %loop_body
 ; GFX900-NEXT:    ; =>This Inner Loop Header: Depth=1
-; GFX900-NEXT:    s_add_i32 m0, s7, 8
-; GFX900-NEXT:    v_mov_b32_e32 v2, s7
-; GFX900-NEXT:    global_load_dword v0, s[0:1] lds
+; GFX900-NEXT:    v_readfirstlane_b32 s7, v2
+; GFX900-NEXT:    s_mov_b32 m0, s7
+; GFX900-NEXT:    s_add_i32 s6, s6, 1
+; GFX900-NEXT:    global_load_dword v[0:1], off lds
 ; GFX900-NEXT:    ; asyncmark
 ; GFX900-NEXT:    ; wait_asyncmark(2)
 ; GFX900-NEXT:    s_waitcnt vmcnt(2)
-; GFX900-NEXT:    ds_read_b32 v2, v2
-; GFX900-NEXT:    s_add_i32 s6, s6, 1
-; GFX900-NEXT:    s_add_u32 s0, s0, 4
-; GFX900-NEXT:    s_addc_u32 s1, s1, 0
-; GFX900-NEXT:    s_add_i32 s7, s7, 4
-; GFX900-NEXT:    s_cmp_lt_i32 s6, s3
+; GFX900-NEXT:    ds_read_b32 v6, v2
+; GFX900-NEXT:    v_cmp_ge_i32_e32 vcc, s6, v7
+; GFX900-NEXT:    s_or_b64 s[4:5], vcc, s[4:5]
 ; GFX900-NEXT:    s_waitcnt lgkmcnt(0)
-; GFX900-NEXT:    v_add_u32_e32 v1, v1, v2
-; GFX900-NEXT:    s_cbranch_scc1 .LBB2_1
+; GFX900-NEXT:    v_add_u32_e32 v5, v5, v6
+; GFX900-NEXT:    s_andn2_b64 exec, exec, s[4:5]
+; GFX900-NEXT:    s_cbranch_execnz .LBB3_1
 ; GFX900-NEXT:  ; %bb.2: ; %epilog
-; GFX900-NEXT:    s_lshl2_add_u32 s0, s3, s2
-; GFX900-NEXT:    s_add_i32 s0, s0, -8
-; GFX900-NEXT:    v_mov_b32_e32 v0, s0
+; GFX900-NEXT:    s_or_b64 exec, exec, s[4:5]
 ; GFX900-NEXT:    ; wait_asyncmark(1)
 ; GFX900-NEXT:    s_waitcnt vmcnt(1)
-; GFX900-NEXT:    ds_read_b32 v0, v0
-; GFX900-NEXT:    s_load_dwordx2 s[0:1], s[4:5], 0x34
-; GFX900-NEXT:    v_mov_b32_e32 v2, 0
+; GFX900-NEXT:    ds_read_b32 v0, v2
 ; GFX900-NEXT:    ; wait_asyncmark(0)
 ; GFX900-NEXT:    s_waitcnt vmcnt(0) lgkmcnt(0)
-; GFX900-NEXT:    v_add_u32_e32 v0, v1, v0
-; GFX900-NEXT:    global_store_dword v2, v0, s[0:1]
-; GFX900-NEXT:    s_endpgm
+; GFX900-NEXT:    v_add_u32_e32 v0, v5, v0
+; GFX900-NEXT:    global_store_dword v[3:4], v0, off
+; GFX900-NEXT:    s_waitcnt vmcnt(0)
+; GFX900-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX942-LABEL: test_pipelined_loop:
 ; GFX942:       ; %bb.0: ; %prolog
-; GFX942-NEXT:    s_load_dword s2, s[4:5], 0x2c
-; GFX942-NEXT:    s_load_dwordx2 s[0:1], s[4:5], 0x24
-; GFX942-NEXT:    v_mov_b32_e32 v0, 0
-; GFX942-NEXT:    s_load_dword s3, s[4:5], 0x44
-; GFX942-NEXT:    v_mov_b32_e32 v1, 0
-; GFX942-NEXT:    s_waitcnt lgkmcnt(0)
-; GFX942-NEXT:    s_mov_b32 m0, s2
-; GFX942-NEXT:    s_nop 0
-; GFX942-NEXT:    global_load_lds_dword v0, s[0:1]
-; GFX942-NEXT:    s_add_i32 m0, s2, 4
-; GFX942-NEXT:    s_add_u32 s6, s0, 4
-; GFX942-NEXT:    s_addc_u32 s7, s1, 0
+; GFX942-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; GFX942-NEXT:    v_readfirstlane_b32 s0, v2
+; GFX942-NEXT:    s_mov_b32 m0, s0
+; GFX942-NEXT:    v_mov_b32_e32 v5, v4
+; GFX942-NEXT:    global_load_lds_dword v[0:1], off
 ; GFX942-NEXT:    ; asyncmark
-; GFX942-NEXT:    global_load_lds_dword v0, s[6:7]
-; GFX942-NEXT:    s_add_u32 s0, s0, 8
-; GFX942-NEXT:    s_addc_u32 s1, s1, 0
-; GFX942-NEXT:    s_mov_b32 s6, 2
-; GFX942-NEXT:    s_mov_b32 s7, s2
+; GFX942-NEXT:    global_load_lds_dword v[0:1], off
+; GFX942-NEXT:    v_mov_b32_e32 v4, v3
+; GFX942-NEXT:    s_mov_b32 s2, 2
+; GFX942-NEXT:    s_mov_b64 s[0:1], 0
+; GFX942-NEXT:    v_mov_b32_e32 v3, 0
 ; GFX942-NEXT:    ; asyncmark
-; GFX942-NEXT:  .LBB2_1: ; %loop_body
+; GFX942-NEXT:  .LBB3_1: ; %loop_body
 ; GFX942-NEXT:    ; =>This Inner Loop Header: Depth=1
-; GFX942-NEXT:    s_add_i32 m0, s7, 8
-; GFX942-NEXT:    v_mov_b32_e32 v2, s7
-; GFX942-NEXT:    global_load_lds_dword v0, s[0:1]
+; GFX942-NEXT:    v_readfirstlane_b32 s3, v2
+; GFX942-NEXT:    s_mov_b32 m0, s3
+; GFX942-NEXT:    s_add_i32 s2, s2, 1
+; GFX942-NEXT:    global_load_lds_dword v[0:1], off
 ; GFX942-NEXT:    ; asyncmark
 ; GFX942-NEXT:    ; wait_asyncmark(2)
 ; GFX942-NEXT:    s_waitcnt vmcnt(2)
-; GFX942-NEXT:    ds_read_b32 v2, v2
-; GFX942-NEXT:    s_add_i32 s6, s6, 1
-; GFX942-NEXT:    s_add_u32 s0, s0, 4
-; GFX942-NEXT:    s_addc_u32 s1, s1, 0
-; GFX942-NEXT:    s_add_i32 s7, s7, 4
-; GFX942-NEXT:    s_cmp_lt_i32 s6, s3
+; GFX942-NEXT:    ds_read_b32 v6, v2
+; GFX942-NEXT:    v_cmp_ge_i32_e32 vcc, s2, v7
+; GFX942-NEXT:    s_or_b64 s[0:1], vcc, s[0:1]
 ; GFX942-NEXT:    s_waitcnt lgkmcnt(0)
-; GFX942-NEXT:    v_add_u32_e32 v1, v1, v2
-; GFX942-NEXT:    s_cbranch_scc1 .LBB2_1
+; GFX942-NEXT:    v_add_u32_e32 v3, v3, v6
+; GFX942-NEXT:    s_andn2_b64 exec, exec, s[0:1]
+; GFX942-NEXT:    s_cbranch_execnz .LBB3_1
 ; GFX942-NEXT:  ; %bb.2: ; %epilog
-; GFX942-NEXT:    s_lshl2_add_u32 s0, s3, s2
-; GFX942-NEXT:    s_add_i32 s0, s0, -8
-; GFX942-NEXT:    v_mov_b32_e32 v0, s0
+; GFX942-NEXT:    s_or_b64 exec, exec, s[0:1]
 ; GFX942-NEXT:    ; wait_asyncmark(1)
 ; GFX942-NEXT:    s_waitcnt vmcnt(1)
-; GFX942-NEXT:    ds_read_b32 v0, v0
-; GFX942-NEXT:    s_load_dwordx2 s[0:1], s[4:5], 0x34
-; GFX942-NEXT:    v_mov_b32_e32 v2, 0
+; GFX942-NEXT:    ds_read_b32 v0, v2
 ; GFX942-NEXT:    ; wait_asyncmark(0)
 ; GFX942-NEXT:    s_waitcnt vmcnt(0) lgkmcnt(0)
-; GFX942-NEXT:    v_add_u32_e32 v0, v1, v0
-; GFX942-NEXT:    global_store_dword v2, v0, s[0:1]
-; GFX942-NEXT:    s_endpgm
+; GFX942-NEXT:    v_add_u32_e32 v0, v3, v0
+; GFX942-NEXT:    global_store_dword v[4:5], v0, off
+; GFX942-NEXT:    s_waitcnt vmcnt(0)
+; GFX942-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX1010-LABEL: test_pipelined_loop:
 ; GFX1010:       ; %bb.0: ; %prolog
-; GFX1010-NEXT:    s_clause 0x1
-; GFX1010-NEXT:    s_load_dword s2, s[4:5], 0x2c
-; GFX1010-NEXT:    s_load_dwordx2 s[0:1], s[4:5], 0x24
-; GFX1010-NEXT:    v_mov_b32_e32 v0, 0
-; GFX1010-NEXT:    s_load_dword s3, s[4:5], 0x44
-; GFX1010-NEXT:    v_mov_b32_e32 v1, 0
-; GFX1010-NEXT:    s_waitcnt lgkmcnt(0)
-; GFX1010-NEXT:    s_mov_b32 m0, s2
-; GFX1010-NEXT:    global_load_dword v0, s[0:1] lds
-; GFX1010-NEXT:    s_waitcnt_depctr depctr_vm_vsrc(0)
-; GFX1010-NEXT:    s_add_i32 m0, s2, 4
-; GFX1010-NEXT:    s_add_u32 s6, s0, 4
-; GFX1010-NEXT:    s_addc_u32 s7, s1, 0
+; GFX1010-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; GFX1010-NEXT:    v_readfirstlane_b32 s4, v2
+; GFX1010-NEXT:    v_mov_b32_e32 v5, 0
+; GFX1010-NEXT:    s_mov_b32 s5, 2
+; GFX1010-NEXT:    s_mov_b32 m0, s4
+; GFX1010-NEXT:    s_mov_b32 s4, 0
+; GFX1010-NEXT:    global_load_dword v[0:1], off lds
 ; GFX1010-NEXT:    ; asyncmark
-; GFX1010-NEXT:    global_load_dword v0, s[6:7] lds
-; GFX1010-NEXT:    s_add_u32 s0, s0, 8
-; GFX1010-NEXT:    s_addc_u32 s1, s1, 0
-; GFX1010-NEXT:    s_waitcnt_depctr depctr_vm_vsrc(0)
-; GFX1010-NEXT:    s_mov_b32 s6, 2
-; GFX1010-NEXT:    s_mov_b32 s7, s2
+; GFX1010-NEXT:    global_load_dword v[0:1], off lds
 ; GFX1010-NEXT:    ; asyncmark
-; GFX1010-NEXT:  .LBB2_1: ; %loop_body
+; GFX1010-NEXT:  .LBB3_1: ; %loop_body
 ; GFX1010-NEXT:    ; =>This Inner Loop Header: Depth=1
-; GFX1010-NEXT:    s_add_i32 m0, s7, 8
-; GFX1010-NEXT:    v_mov_b32_e32 v2, s7
-; GFX1010-NEXT:    global_load_dword v0, s[0:1] lds
+; GFX1010-NEXT:    v_readfirstlane_b32 s6, v2
+; GFX1010-NEXT:    s_add_i32 s5, s5, 1
+; GFX1010-NEXT:    v_cmp_ge_i32_e32 vcc_lo, s5, v7
+; GFX1010-NEXT:    s_mov_b32 m0, s6
+; GFX1010-NEXT:    global_load_dword v[0:1], off lds
 ; GFX1010-NEXT:    ; asyncmark
 ; GFX1010-NEXT:    ; wait_asyncmark(2)
 ; GFX1010-NEXT:    s_waitcnt vmcnt(2)
-; GFX1010-NEXT:    ds_read_b32 v2, v2
-; GFX1010-NEXT:    s_add_i32 s6, s6, 1
-; GFX1010-NEXT:    s_waitcnt_depctr depctr_vm_vsrc(0)
-; GFX1010-NEXT:    s_add_u32 s0, s0, 4
-; GFX1010-NEXT:    s_addc_u32 s1, s1, 0
-; GFX1010-NEXT:    s_add_i32 s7, s7, 4
-; GFX1010-NEXT:    s_cmp_lt_i32 s6, s3
+; GFX1010-NEXT:    ds_read_b32 v6, v2
+; GFX1010-NEXT:    s_or_b32 s4, vcc_lo, s4
 ; GFX1010-NEXT:    s_waitcnt lgkmcnt(0)
-; GFX1010-NEXT:    v_add_nc_u32_e32 v1, v1, v2
-; GFX1010-NEXT:    s_cbranch_scc1 .LBB2_1
+; GFX1010-NEXT:    v_add_nc_u32_e32 v5, v5, v6
+; GFX1010-NEXT:    s_andn2_b32 exec_lo, exec_lo, s4
+; GFX1010-NEXT:    s_cbranch_execnz .LBB3_1
 ; GFX1010-NEXT:  ; %bb.2: ; %epilog
-; GFX1010-NEXT:    s_lshl2_add_u32 s0, s3, s2
+; GFX1010-NEXT:    s_or_b32 exec_lo, exec_lo, s4
 ; GFX1010-NEXT:    ; wait_asyncmark(1)
 ; GFX1010-NEXT:    s_waitcnt vmcnt(1)
-; GFX1010-NEXT:    s_add_i32 s0, s0, -8
-; GFX1010-NEXT:    v_mov_b32_e32 v2, 0
-; GFX1010-NEXT:    v_mov_b32_e32 v0, s0
-; GFX1010-NEXT:    s_load_dwordx2 s[0:1], s[4:5], 0x34
-; GFX1010-NEXT:    ds_read_b32 v0, v0
+; GFX1010-NEXT:    ds_read_b32 v0, v2
 ; GFX1010-NEXT:    ; wait_asyncmark(0)
 ; GFX1010-NEXT:    s_waitcnt vmcnt(0) lgkmcnt(0)
-; GFX1010-NEXT:    v_add_nc_u32_e32 v0, v1, v0
-; GFX1010-NEXT:    global_store_dword v2, v0, s[0:1]
-; GFX1010-NEXT:    s_endpgm
+; GFX1010-NEXT:    v_add_nc_u32_e32 v0, v5, v0
+; GFX1010-NEXT:    global_store_dword v[3:4], v0, off
+; GFX1010-NEXT:    s_setpc_b64 s[30:31]
 prolog:
   ; Load first iteration
   call void @llvm.amdgcn.global.load.lds(ptr addrspace(1) %foo, ptr addrspace(3) %lds, i32 4, i32 0, i32 u0x20)
   call void @llvm.amdgcn.asyncmark()
 
   ; Load second iteration
-  %lds_gep1 = getelementptr i32, ptr addrspace(3) %lds, i32 1
-  %foo_gep1 = getelementptr i32, ptr addrspace(1) %foo, i32 1
-  call void @llvm.amdgcn.global.load.lds(ptr addrspace(1) %foo_gep1, ptr addrspace(3) %lds_gep1, i32 4, i32 0, i32 u0x20)
+  call void @llvm.amdgcn.global.load.lds(ptr addrspace(1) %foo, ptr addrspace(3) %lds, i32 4, i32 0, i32 u0x20)
   call void @llvm.amdgcn.asyncmark()
 
   br label %loop_body
@@ -510,16 +465,13 @@ loop_body:
   %sum = phi i32 [ 0, %prolog ], [ %sum_i, %loop_body ]
 
   ; Load next iteration
-  %lds_gep_cur = getelementptr i32, ptr addrspace(3) %lds, i32 %i
-  %foo_gep_cur = getelementptr i32, ptr addrspace(1) %foo, i32 %i
-  call void @llvm.amdgcn.global.load.lds(ptr addrspace(1) %foo_gep_cur, ptr addrspace(3) %lds_gep_cur, i32 4, i32 0, i32 u0x20)
+  call void @llvm.amdgcn.global.load.lds(ptr addrspace(1) %foo, ptr addrspace(3) %lds, i32 4, i32 0, i32 u0x20)
   call void @llvm.amdgcn.asyncmark()
 
   ; Wait for iteration i-2 and process
   call void @llvm.amdgcn.wait.asyncmark(i16 2)
   %lds_idx = sub i32 %i, 2
-  %lds_gep_read = getelementptr i32, ptr addrspace(3) %lds, i32 %lds_idx
-  %lds_val = load i32, ptr addrspace(3) %lds_gep_read
+  %lds_val = load i32, ptr addrspace(3) %lds
 
   %sum_i = add i32 %sum, %lds_val
 
@@ -530,16 +482,11 @@ loop_body:
 epilog:
   ; Process remaining iterations
   call void @llvm.amdgcn.wait.asyncmark(i16 1)
-  %lds_n_2 = sub i32 %n, 2
-  %lds_gep_n_2 = getelementptr i32, ptr addrspace(3) %lds, i32 %lds_n_2
-  %lds_val_n_2 = load i32, ptr addrspace(3) %lds_gep_n_2
+  %lds_val_n_2 = load i32, ptr addrspace(3) %lds
   %sum_e2 = add i32 %sum_i, %lds_val_n_2
-  %out_gep_e1 = getelementptr i32, ptr addrspace(1) %out, i32 %lds_n_2
 
   call void @llvm.amdgcn.wait.asyncmark(i16 0)
-  %lds_n_1 = sub i32 %n, 1
-  %lds_gep_n_1 = getelementptr i32, ptr addrspace(3) %lds, i32 %lds_n_1
-  %lds_val_n_1 = load i32, ptr addrspace(3) %lds_gep_n_1
+  %lds_val_n_1 = load i32, ptr addrspace(3) %lds
   %sum_e1 = add i32 %sum_e2, %lds_val_n_1
   store i32 %sum_e2, ptr addrspace(1) %bar
 
@@ -548,277 +495,195 @@ epilog:
 
 ; Software pipelined loop with async global-to-LDS and global loads
 
-define amdgpu_kernel void @test_pipelined_loop_with_global(ptr addrspace(1) %foo, ptr addrspace(3) %lds, ptr addrspace(1) %bar, ptr addrspace(1) %out, i32 %n) {
+define void @test_pipelined_loop_with_global(ptr addrspace(1) %foo, ptr addrspace(3) %lds, ptr addrspace(1) %bar, ptr addrspace(1) %out, i32 %n) {
 ; GFX900-LABEL: test_pipelined_loop_with_global:
 ; GFX900:       ; %bb.0: ; %prolog
-; GFX900-NEXT:    s_load_dwordx2 s[6:7], s[4:5], 0x24
-; GFX900-NEXT:    s_load_dwordx4 s[0:3], s[4:5], 0x34
-; GFX900-NEXT:    s_load_dword s8, s[4:5], 0x2c
-; GFX900-NEXT:    v_mov_b32_e32 v0, 0
-; GFX900-NEXT:    s_mov_b32 s10, 2
-; GFX900-NEXT:    s_load_dword s9, s[4:5], 0x44
-; GFX900-NEXT:    s_waitcnt lgkmcnt(0)
-; GFX900-NEXT:    s_load_dword s12, s[6:7], 0x0
-; GFX900-NEXT:    s_load_dword s13, s[0:1], 0x0
-; GFX900-NEXT:    s_mov_b32 m0, s8
-; GFX900-NEXT:    s_add_u32 s4, s6, 4
-; GFX900-NEXT:    global_load_dword v0, s[6:7] lds
+; GFX900-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; GFX900-NEXT:    v_readfirstlane_b32 s4, v2
+; GFX900-NEXT:    s_mov_b32 m0, s4
+; GFX900-NEXT:    global_load_dword v10, v[0:1], off
+; GFX900-NEXT:    global_load_dword v14, v[3:4], off
+; GFX900-NEXT:    s_mov_b32 s6, 2
+; GFX900-NEXT:    global_load_dword v[0:1], off lds
 ; GFX900-NEXT:    ; asyncmark
-; GFX900-NEXT:    global_load_dword v1, v0, s[6:7] offset:4
-; GFX900-NEXT:    global_load_dword v2, v0, s[0:1] offset:4
-; GFX900-NEXT:    s_addc_u32 s5, s7, 0
-; GFX900-NEXT:    s_add_i32 m0, s8, 4
-; GFX900-NEXT:    s_add_u32 s0, s0, 8
-; GFX900-NEXT:    global_load_dword v0, s[4:5] lds
-; GFX900-NEXT:    s_addc_u32 s1, s1, 0
-; GFX900-NEXT:    s_add_u32 s6, s6, 8
-; GFX900-NEXT:    s_mov_b32 s11, s8
-; GFX900-NEXT:    s_mov_b64 s[4:5], s[2:3]
-; GFX900-NEXT:    s_addc_u32 s7, s7, 0
-; GFX900-NEXT:    s_waitcnt lgkmcnt(0)
-; GFX900-NEXT:    v_mov_b32_e32 v8, s13
-; GFX900-NEXT:    v_mov_b32_e32 v7, s12
+; GFX900-NEXT:    global_load_dword v8, v[0:1], off
+; GFX900-NEXT:    global_load_dword v9, v[3:4], off
+; GFX900-NEXT:    s_mov_b64 s[4:5], 0
+; GFX900-NEXT:    global_load_dword v[0:1], off lds
 ; GFX900-NEXT:    ; asyncmark
 ; GFX900-NEXT:    s_waitcnt vmcnt(2)
-; GFX900-NEXT:    v_mov_b32_e32 v3, v1
+; GFX900-NEXT:    v_mov_b32_e32 v13, v8
 ; GFX900-NEXT:    s_waitcnt vmcnt(1)
-; GFX900-NEXT:    v_mov_b32_e32 v4, v2
-; GFX900-NEXT:  .LBB3_1: ; %loop_body
+; GFX900-NEXT:    v_mov_b32_e32 v15, v9
+; GFX900-NEXT:  .LBB4_1: ; %loop_body
 ; GFX900-NEXT:    ; =>This Inner Loop Header: Depth=1
-; GFX900-NEXT:    s_waitcnt vmcnt(2)
-; GFX900-NEXT:    v_mov_b32_e32 v5, v4
-; GFX900-NEXT:    v_mov_b32_e32 v6, v3
-; GFX900-NEXT:    global_load_dword v3, v0, s[6:7]
-; GFX900-NEXT:    global_load_dword v4, v0, s[0:1]
-; GFX900-NEXT:    s_add_i32 m0, s11, 8
-; GFX900-NEXT:    v_mov_b32_e32 v9, s11
-; GFX900-NEXT:    global_load_dword v0, s[6:7] lds
+; GFX900-NEXT:    v_readfirstlane_b32 s7, v2
+; GFX900-NEXT:    s_waitcnt vmcnt(1)
+; GFX900-NEXT:    v_mov_b32_e32 v12, v15
+; GFX900-NEXT:    v_mov_b32_e32 v11, v13
+; GFX900-NEXT:    global_load_dword v13, v[0:1], off
+; GFX900-NEXT:    global_load_dword v15, v[3:4], off
+; GFX900-NEXT:    s_mov_b32 m0, s7
+; GFX900-NEXT:    s_add_i32 s6, s6, 1
+; GFX900-NEXT:    global_load_dword v[0:1], off lds
+; GFX900-NEXT:    v_cmp_ge_i32_e32 vcc, s6, v7
+; GFX900-NEXT:    v_mov_b32_e32 v16, v14
+; GFX900-NEXT:    v_mov_b32_e32 v17, v10
+; GFX900-NEXT:    v_mov_b32_e32 v10, v8
+; GFX900-NEXT:    v_mov_b32_e32 v14, v9
+; GFX900-NEXT:    s_or_b64 s[4:5], vcc, s[4:5]
 ; GFX900-NEXT:    ; asyncmark
 ; GFX900-NEXT:    ; wait_asyncmark(2)
-; GFX900-NEXT:    ds_read_b32 v9, v9
-; GFX900-NEXT:    s_add_i32 s10, s10, 1
-; GFX900-NEXT:    s_add_u32 s0, s0, 4
-; GFX900-NEXT:    s_addc_u32 s1, s1, 0
-; GFX900-NEXT:    v_add_u32_e32 v7, v7, v8
-; GFX900-NEXT:    s_add_u32 s6, s6, 4
-; GFX900-NEXT:    s_waitcnt lgkmcnt(0)
-; GFX900-NEXT:    v_add_u32_e32 v7, v7, v9
-; GFX900-NEXT:    s_addc_u32 s7, s7, 0
-; GFX900-NEXT:    global_store_dword v0, v7, s[4:5]
-; GFX900-NEXT:    s_add_u32 s4, s4, 4
-; GFX900-NEXT:    s_addc_u32 s5, s5, 0
-; GFX900-NEXT:    s_add_i32 s11, s11, 4
-; GFX900-NEXT:    s_cmp_lt_i32 s10, s9
-; GFX900-NEXT:    v_mov_b32_e32 v7, v1
-; GFX900-NEXT:    v_mov_b32_e32 v8, v2
-; GFX900-NEXT:    s_cbranch_scc1 .LBB3_1
+; GFX900-NEXT:    s_andn2_b64 exec, exec, s[4:5]
+; GFX900-NEXT:    s_cbranch_execnz .LBB4_1
 ; GFX900-NEXT:  ; %bb.2: ; %epilog
-; GFX900-NEXT:    s_add_i32 s0, s9, -2
-; GFX900-NEXT:    s_lshl2_add_u32 s1, s0, s8
-; GFX900-NEXT:    v_mov_b32_e32 v0, s1
+; GFX900-NEXT:    s_or_b64 exec, exec, s[4:5]
+; GFX900-NEXT:    ds_read_b32 v0, v2
 ; GFX900-NEXT:    ; wait_asyncmark(1)
-; GFX900-NEXT:    s_waitcnt vmcnt(4)
-; GFX900-NEXT:    ds_read_b32 v1, v0
-; GFX900-NEXT:    s_ashr_i32 s1, s0, 31
-; GFX900-NEXT:    s_lshl_b64 s[0:1], s[0:1], 2
-; GFX900-NEXT:    v_add_u32_e32 v2, v6, v5
-; GFX900-NEXT:    s_add_u32 s0, s2, s0
-; GFX900-NEXT:    s_waitcnt lgkmcnt(0)
-; GFX900-NEXT:    v_add_u32_e32 v1, v2, v1
-; GFX900-NEXT:    s_addc_u32 s1, s3, s1
-; GFX900-NEXT:    v_mov_b32_e32 v2, 0
-; GFX900-NEXT:    global_store_dword v2, v1, s[0:1]
+; GFX900-NEXT:    s_waitcnt vmcnt(3)
+; GFX900-NEXT:    ds_read_b32 v1, v2
 ; GFX900-NEXT:    ; wait_asyncmark(0)
-; GFX900-NEXT:    s_waitcnt vmcnt(2)
-; GFX900-NEXT:    ds_read_b32 v0, v0 offset:4
-; GFX900-NEXT:    v_add_u32_e32 v1, v3, v4
+; GFX900-NEXT:    s_waitcnt vmcnt(0)
+; GFX900-NEXT:    ds_read_b32 v2, v2
+; GFX900-NEXT:    v_add_u32_e32 v3, v17, v16
+; GFX900-NEXT:    s_waitcnt lgkmcnt(2)
+; GFX900-NEXT:    v_add3_u32 v0, v3, v0, v12
+; GFX900-NEXT:    s_waitcnt lgkmcnt(1)
+; GFX900-NEXT:    v_add3_u32 v0, v11, v0, v1
+; GFX900-NEXT:    v_add_u32_e32 v1, v13, v15
 ; GFX900-NEXT:    s_waitcnt lgkmcnt(0)
-; GFX900-NEXT:    v_add_u32_e32 v0, v1, v0
-; GFX900-NEXT:    global_store_dword v2, v0, s[0:1] offset:4
-; GFX900-NEXT:    s_endpgm
+; GFX900-NEXT:    v_add3_u32 v0, v1, v2, v0
+; GFX900-NEXT:    global_store_dword v[5:6], v0, off
+; GFX900-NEXT:    s_waitcnt vmcnt(0)
+; GFX900-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX942-LABEL: test_pipelined_loop_with_global:
 ; GFX942:       ; %bb.0: ; %prolog
-; GFX942-NEXT:    s_load_dwordx2 s[6:7], s[4:5], 0x24
-; GFX942-NEXT:    s_load_dwordx4 s[0:3], s[4:5], 0x34
-; GFX942-NEXT:    s_load_dword s8, s[4:5], 0x2c
-; GFX942-NEXT:    v_mov_b32_e32 v0, 0
-; GFX942-NEXT:    s_mov_b32 s10, 2
-; GFX942-NEXT:    s_load_dword s9, s[4:5], 0x44
-; GFX942-NEXT:    s_waitcnt lgkmcnt(0)
-; GFX942-NEXT:    s_load_dword s12, s[6:7], 0x0
-; GFX942-NEXT:    s_load_dword s13, s[0:1], 0x0
-; GFX942-NEXT:    s_mov_b32 m0, s8
-; GFX942-NEXT:    s_add_u32 s4, s6, 4
-; GFX942-NEXT:    global_load_lds_dword v0, s[6:7]
+; GFX942-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; GFX942-NEXT:    v_readfirstlane_b32 s0, v2
+; GFX942-NEXT:    s_mov_b32 m0, s0
+; GFX942-NEXT:    v_mov_b32_e32 v11, v4
+; GFX942-NEXT:    v_mov_b32_e32 v10, v3
+; GFX942-NEXT:    global_load_dword v16, v[0:1], off
+; GFX942-NEXT:    global_load_dword v17, v[10:11], off
+; GFX942-NEXT:    v_mov_b32_e32 v9, v6
+; GFX942-NEXT:    global_load_lds_dword v[0:1], off
 ; GFX942-NEXT:    ; asyncmark
-; GFX942-NEXT:    global_load_dword v1, v0, s[6:7] offset:4
-; GFX942-NEXT:    global_load_dword v2, v0, s[0:1] offset:4
-; GFX942-NEXT:    s_addc_u32 s5, s7, 0
-; GFX942-NEXT:    s_add_i32 m0, s8, 4
-; GFX942-NEXT:    s_add_u32 s0, s0, 8
-; GFX942-NEXT:    global_load_lds_dword v0, s[4:5]
-; GFX942-NEXT:    s_addc_u32 s1, s1, 0
-; GFX942-NEXT:    s_add_u32 s6, s6, 8
-; GFX942-NEXT:    s_mov_b32 s11, s8
-; GFX942-NEXT:    s_mov_b64 s[4:5], s[2:3]
-; GFX942-NEXT:    s_addc_u32 s7, s7, 0
-; GFX942-NEXT:    s_waitcnt lgkmcnt(0)
-; GFX942-NEXT:    v_mov_b32_e32 v8, s13
-; GFX942-NEXT:    v_mov_b32_e32 v7, s12
+; GFX942-NEXT:    global_load_dword v14, v[0:1], off
+; GFX942-NEXT:    global_load_dword v15, v[10:11], off
+; GFX942-NEXT:    v_mov_b32_e32 v8, v5
+; GFX942-NEXT:    global_load_lds_dword v[0:1], off
+; GFX942-NEXT:    s_mov_b32 s2, 2
+; GFX942-NEXT:    s_mov_b64 s[0:1], 0
 ; GFX942-NEXT:    ; asyncmark
 ; GFX942-NEXT:    s_waitcnt vmcnt(2)
-; GFX942-NEXT:    v_mov_b32_e32 v3, v1
+; GFX942-NEXT:    v_mov_b32_e32 v18, v14
 ; GFX942-NEXT:    s_waitcnt vmcnt(1)
-; GFX942-NEXT:    v_mov_b32_e32 v4, v2
-; GFX942-NEXT:  .LBB3_1: ; %loop_body
+; GFX942-NEXT:    v_mov_b32_e32 v19, v15
+; GFX942-NEXT:  .LBB4_1: ; %loop_body
 ; GFX942-NEXT:    ; =>This Inner Loop Header: Depth=1
-; GFX942-NEXT:    s_waitcnt vmcnt(2)
-; GFX942-NEXT:    v_mov_b32_e32 v5, v4
-; GFX942-NEXT:    v_mov_b32_e32 v6, v3
-; GFX942-NEXT:    global_load_dword v3, v0, s[6:7]
-; GFX942-NEXT:    global_load_dword v4, v0, s[0:1]
-; GFX942-NEXT:    s_add_i32 m0, s11, 8
-; GFX942-NEXT:    v_mov_b32_e32 v9, s11
-; GFX942-NEXT:    global_load_lds_dword v0, s[6:7]
+; GFX942-NEXT:    global_load_dword v3, v[0:1], off
+; GFX942-NEXT:    global_load_dword v4, v[10:11], off
+; GFX942-NEXT:    v_readfirstlane_b32 s3, v2
+; GFX942-NEXT:    s_mov_b32 m0, s3
+; GFX942-NEXT:    s_add_i32 s2, s2, 1
+; GFX942-NEXT:    global_load_lds_dword v[0:1], off
+; GFX942-NEXT:    v_cmp_ge_i32_e32 vcc, s2, v7
+; GFX942-NEXT:    v_mov_b32_e32 v5, v16
+; GFX942-NEXT:    v_mov_b32_e32 v12, v17
+; GFX942-NEXT:    v_mov_b32_e32 v6, v18
+; GFX942-NEXT:    v_mov_b32_e32 v13, v19
+; GFX942-NEXT:    v_mov_b32_e32 v16, v14
+; GFX942-NEXT:    v_mov_b32_e32 v17, v15
+; GFX942-NEXT:    s_or_b64 s[0:1], vcc, s[0:1]
 ; GFX942-NEXT:    ; asyncmark
 ; GFX942-NEXT:    ; wait_asyncmark(2)
-; GFX942-NEXT:    ds_read_b32 v9, v9
-; GFX942-NEXT:    s_add_i32 s10, s10, 1
-; GFX942-NEXT:    s_add_u32 s0, s0, 4
-; GFX942-NEXT:    s_addc_u32 s1, s1, 0
-; GFX942-NEXT:    v_add_u32_e32 v7, v7, v8
-; GFX942-NEXT:    s_add_u32 s6, s6, 4
-; GFX942-NEXT:    s_waitcnt lgkmcnt(0)
-; GFX942-NEXT:    v_add_u32_e32 v7, v7, v9
-; GFX942-NEXT:    s_addc_u32 s7, s7, 0
-; GFX942-NEXT:    global_store_dword v0, v7, s[4:5]
-; GFX942-NEXT:    s_add_u32 s4, s4, 4
-; GFX942-NEXT:    s_addc_u32 s5, s5, 0
-; GFX942-NEXT:    s_add_i32 s11, s11, 4
-; GFX942-NEXT:    s_cmp_lt_i32 s10, s9
-; GFX942-NEXT:    v_mov_b32_e32 v7, v1
-; GFX942-NEXT:    v_mov_b32_e32 v8, v2
-; GFX942-NEXT:    s_cbranch_scc1 .LBB3_1
-; GFX942-NEXT:  ; %bb.2: ; %epilog
-; GFX942-NEXT:    s_add_i32 s0, s9, -2
-; GFX942-NEXT:    s_lshl2_add_u32 s1, s0, s8
-; GFX942-NEXT:    v_mov_b32_e32 v0, s1
-; GFX942-NEXT:    ; wait_asyncmark(1)
-; GFX942-NEXT:    s_waitcnt vmcnt(4)
-; GFX942-NEXT:    ds_read_b32 v1, v0
-; GFX942-NEXT:    s_ashr_i32 s1, s0, 31
-; GFX942-NEXT:    s_lshl_b64 s[0:1], s[0:1], 2
-; GFX942-NEXT:    v_add_u32_e32 v2, v6, v5
-; GFX942-NEXT:    s_add_u32 s0, s2, s0
-; GFX942-NEXT:    s_waitcnt lgkmcnt(0)
-; GFX942-NEXT:    v_add_u32_e32 v1, v2, v1
-; GFX942-NEXT:    s_addc_u32 s1, s3, s1
-; GFX942-NEXT:    v_mov_b32_e32 v2, 0
-; GFX942-NEXT:    global_store_dword v2, v1, s[0:1]
-; GFX942-NEXT:    ; wait_asyncmark(0)
 ; GFX942-NEXT:    s_waitcnt vmcnt(2)
-; GFX942-NEXT:    ds_read_b32 v0, v0 offset:4
+; GFX942-NEXT:    v_mov_b32_e32 v18, v3
+; GFX942-NEXT:    s_waitcnt vmcnt(1)
+; GFX942-NEXT:    v_mov_b32_e32 v19, v4
+; GFX942-NEXT:    s_andn2_b64 exec, exec, s[0:1]
+; GFX942-NEXT:    s_cbranch_execnz .LBB4_1
+; GFX942-NEXT:  ; %bb.2: ; %epilog
+; GFX942-NEXT:    s_or_b64 exec, exec, s[0:1]
+; GFX942-NEXT:    ds_read_b32 v0, v2
+; GFX942-NEXT:    ; wait_asyncmark(1)
+; GFX942-NEXT:    ds_read_b32 v1, v2
+; GFX942-NEXT:    ; wait_asyncmark(0)
+; GFX942-NEXT:    s_waitcnt vmcnt(0)
+; GFX942-NEXT:    ds_read_b32 v2, v2
+; GFX942-NEXT:    v_add_u32_e32 v5, v5, v12
+; GFX942-NEXT:    s_waitcnt lgkmcnt(2)
+; GFX942-NEXT:    v_add3_u32 v0, v5, v0, v13
+; GFX942-NEXT:    s_waitcnt lgkmcnt(1)
+; GFX942-NEXT:    v_add3_u32 v0, v6, v0, v1
 ; GFX942-NEXT:    v_add_u32_e32 v1, v3, v4
 ; GFX942-NEXT:    s_waitcnt lgkmcnt(0)
-; GFX942-NEXT:    v_add_u32_e32 v0, v1, v0
-; GFX942-NEXT:    global_store_dword v2, v0, s[0:1] offset:4
-; GFX942-NEXT:    s_endpgm
+; GFX942-NEXT:    v_add3_u32 v0, v1, v2, v0
+; GFX942-NEXT:    global_store_dword v[8:9], v0, off
+; GFX942-NEXT:    s_waitcnt vmcnt(0)
+; GFX942-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; GFX1010-LABEL: test_pipelined_loop_with_global:
 ; GFX1010:       ; %bb.0: ; %prolog
-; GFX1010-NEXT:    s_clause 0x2
-; GFX1010-NEXT:    s_load_dwordx2 s[6:7], s[4:5], 0x24
-; GFX1010-NEXT:    s_load_dwordx4 s[0:3], s[4:5], 0x34
-; GFX1010-NEXT:    s_load_dword s8, s[4:5], 0x2c
-; GFX1010-NEXT:    v_mov_b32_e32 v0, 0
-; GFX1010-NEXT:    s_load_dword s9, s[4:5], 0x44
-; GFX1010-NEXT:    s_waitcnt lgkmcnt(0)
-; GFX1010-NEXT:    s_load_dword s10, s[6:7], 0x0
-; GFX1010-NEXT:    s_load_dword s11, s[0:1], 0x0
-; GFX1010-NEXT:    s_mov_b32 m0, s8
-; GFX1010-NEXT:    s_add_u32 s4, s6, 4
-; GFX1010-NEXT:    global_load_dword v0, s[6:7] lds
+; GFX1010-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+; GFX1010-NEXT:    v_readfirstlane_b32 s4, v2
+; GFX1010-NEXT:    global_load_dword v9, v[0:1], off
+; GFX1010-NEXT:    global_load_dword v13, v[3:4], off
+; GFX1010-NEXT:    s_mov_b32 s5, 2
+; GFX1010-NEXT:    s_mov_b32 m0, s4
+; GFX1010-NEXT:    s_mov_b32 s4, 0
+; GFX1010-NEXT:    global_load_dword v[0:1], off lds
 ; GFX1010-NEXT:    ; asyncmark
-; GFX1010-NEXT:    s_clause 0x1
-; GFX1010-NEXT:    global_load_dword v1, v0, s[6:7] offset:4
-; GFX1010-NEXT:    global_load_dword v2, v0, s[0:1] offset:4
-; GFX1010-NEXT:    s_addc_u32 s5, s7, 0
-; GFX1010-NEXT:    s_waitcnt_depctr depctr_vm_vsrc(0)
-; GFX1010-NEXT:    s_add_i32 m0, s8, 4
-; GFX1010-NEXT:    s_add_u32 s0, s0, 8
-; GFX1010-NEXT:    global_load_dword v0, s[4:5] lds
-; GFX1010-NEXT:    s_addc_u32 s1, s1, 0
-; GFX1010-NEXT:    s_waitcnt_depctr depctr_vm_vsrc(0)
-; GFX1010-NEXT:    s_add_u32 s4, s6, 8
-; GFX1010-NEXT:    s_addc_u32 s5, s7, 0
-; GFX1010-NEXT:    s_mov_b64 s[6:7], s[2:3]
+; GFX1010-NEXT:    global_load_dword v10, v[0:1], off
+; GFX1010-NEXT:    global_load_dword v12, v[3:4], off
+; GFX1010-NEXT:    global_load_dword v[0:1], off lds
 ; GFX1010-NEXT:    ; asyncmark
-; GFX1010-NEXT:    s_waitcnt lgkmcnt(0)
-; GFX1010-NEXT:    v_mov_b32_e32 v7, s10
-; GFX1010-NEXT:    v_mov_b32_e32 v8, s11
-; GFX1010-NEXT:    s_mov_b32 s10, 2
-; GFX1010-NEXT:    s_mov_b32 s11, s8
 ; GFX1010-NEXT:    s_waitcnt vmcnt(2)
-; GFX1010-NEXT:    v_mov_b32_e32 v3, v1
+; GFX1010-NEXT:    v_mov_b32_e32 v8, v10
 ; GFX1010-NEXT:    s_waitcnt vmcnt(1)
-; GFX1010-NEXT:    v_mov_b32_e32 v4, v2
-; GFX1010-NEXT:  .LBB3_1: ; %loop_body
+; GFX1010-NEXT:    v_mov_b32_e32 v11, v12
+; GFX1010-NEXT:  .LBB4_1: ; %loop_body
 ; GFX1010-NEXT:    ; =>This Inner Loop Header: Depth=1
-; GFX1010-NEXT:    s_add_i32 m0, s11, 8
+; GFX1010-NEXT:    v_readfirstlane_b32 s6, v2
 ; GFX1010-NEXT:    s_waitcnt vmcnt(1)
-; GFX1010-NEXT:    v_mov_b32_e32 v5, v4
-; GFX1010-NEXT:    v_mov_b32_e32 v6, v3
-; GFX1010-NEXT:    s_clause 0x1
-; GFX1010-NEXT:    global_load_dword v3, v0, s[4:5]
-; GFX1010-NEXT:    global_load_dword v4, v0, s[0:1]
-; GFX1010-NEXT:    global_load_dword v0, s[4:5] lds
-; GFX1010-NEXT:    v_mov_b32_e32 v9, s11
+; GFX1010-NEXT:    v_mov_b32_e32 v15, v11
+; GFX1010-NEXT:    v_mov_b32_e32 v14, v8
+; GFX1010-NEXT:    s_waitcnt_vscnt null, 0x0
+; GFX1010-NEXT:    global_load_dword v8, v[0:1], off
+; GFX1010-NEXT:    global_load_dword v11, v[3:4], off
+; GFX1010-NEXT:    s_add_i32 s5, s5, 1
+; GFX1010-NEXT:    s_mov_b32 m0, s6
+; GFX1010-NEXT:    v_cmp_ge_i32_e32 vcc_lo, s5, v7
+; GFX1010-NEXT:    global_load_dword v[0:1], off lds
+; GFX1010-NEXT:    v_mov_b32_e32 v16, v13
+; GFX1010-NEXT:    v_mov_b32_e32 v17, v9
+; GFX1010-NEXT:    v_mov_b32_e32 v9, v10
+; GFX1010-NEXT:    v_mov_b32_e32 v13, v12
+; GFX1010-NEXT:    s_or_b32 s4, vcc_lo, s4
 ; GFX1010-NEXT:    ; asyncmark
 ; GFX1010-NEXT:    ; wait_asyncmark(2)
-; GFX1010-NEXT:    v_add_nc_u32_e32 v10, v7, v8
-; GFX1010-NEXT:    s_add_i32 s10, s10, 1
-; GFX1010-NEXT:    ds_read_b32 v9, v9
-; GFX1010-NEXT:    s_add_u32 s0, s0, 4
-; GFX1010-NEXT:    s_addc_u32 s1, s1, 0
-; GFX1010-NEXT:    s_add_u32 s4, s4, 4
-; GFX1010-NEXT:    v_mov_b32_e32 v7, v1
-; GFX1010-NEXT:    v_mov_b32_e32 v8, v2
-; GFX1010-NEXT:    s_addc_u32 s5, s5, 0
-; GFX1010-NEXT:    s_waitcnt lgkmcnt(0)
-; GFX1010-NEXT:    v_add_nc_u32_e32 v9, v10, v9
-; GFX1010-NEXT:    global_store_dword v0, v9, s[6:7]
-; GFX1010-NEXT:    s_waitcnt_depctr depctr_vm_vsrc(0)
-; GFX1010-NEXT:    s_add_u32 s6, s6, 4
-; GFX1010-NEXT:    s_addc_u32 s7, s7, 0
-; GFX1010-NEXT:    s_add_i32 s11, s11, 4
-; GFX1010-NEXT:    s_cmp_lt_i32 s10, s9
-; GFX1010-NEXT:    s_cbranch_scc1 .LBB3_1
+; GFX1010-NEXT:    s_andn2_b32 exec_lo, exec_lo, s4
+; GFX1010-NEXT:    s_cbranch_execnz .LBB4_1
 ; GFX1010-NEXT:  ; %bb.2: ; %epilog
-; GFX1010-NEXT:    s_add_i32 s0, s9, -2
+; GFX1010-NEXT:    s_or_b32 exec_lo, exec_lo, s4
+; GFX1010-NEXT:    ds_read_b32 v0, v2
 ; GFX1010-NEXT:    ; wait_asyncmark(1)
 ; GFX1010-NEXT:    s_waitcnt vmcnt(3)
-; GFX1010-NEXT:    s_lshl2_add_u32 s1, s0, s8
-; GFX1010-NEXT:    v_add_nc_u32_e32 v2, v6, v5
-; GFX1010-NEXT:    v_mov_b32_e32 v0, s1
-; GFX1010-NEXT:    s_ashr_i32 s1, s0, 31
-; GFX1010-NEXT:    v_mov_b32_e32 v5, 0
-; GFX1010-NEXT:    s_lshl_b64 s[0:1], s[0:1], 2
-; GFX1010-NEXT:    s_add_u32 s0, s2, s0
-; GFX1010-NEXT:    s_waitcnt_vscnt null, 0x0
-; GFX1010-NEXT:    ds_read_b32 v1, v0
-; GFX1010-NEXT:    s_addc_u32 s1, s3, s1
-; GFX1010-NEXT:    s_waitcnt lgkmcnt(0)
-; GFX1010-NEXT:    v_add_nc_u32_e32 v1, v2, v1
-; GFX1010-NEXT:    global_store_dword v5, v1, s[0:1]
+; GFX1010-NEXT:    ds_read_b32 v1, v2
 ; GFX1010-NEXT:    ; wait_asyncmark(0)
 ; GFX1010-NEXT:    s_waitcnt vmcnt(0)
-; GFX1010-NEXT:    ds_read_b32 v0, v0 offset:4
-; GFX1010-NEXT:    v_add_nc_u32_e32 v1, v3, v4
+; GFX1010-NEXT:    ds_read_b32 v2, v2
+; GFX1010-NEXT:    v_add_nc_u32_e32 v3, v17, v16
+; GFX1010-NEXT:    s_waitcnt lgkmcnt(2)
+; GFX1010-NEXT:    v_add3_u32 v0, v3, v0, v15
+; GFX1010-NEXT:    s_waitcnt lgkmcnt(1)
+; GFX1010-NEXT:    v_add3_u32 v0, v14, v0, v1
+; GFX1010-NEXT:    v_add_nc_u32_e32 v1, v8, v11
 ; GFX1010-NEXT:    s_waitcnt lgkmcnt(0)
-; GFX1010-NEXT:    v_add_nc_u32_e32 v0, v1, v0
-; GFX1010-NEXT:    global_store_dword v5, v0, s[0:1] offset:4
-; GFX1010-NEXT:    s_endpgm
+; GFX1010-NEXT:    v_add3_u32 v0, v1, v2, v0
+; GFX1010-NEXT:    global_store_dword v[5:6], v0, off
+; GFX1010-NEXT:    s_setpc_b64 s[30:31]
 prolog:
   ; Load first iteration
   %v0 = load i32, ptr addrspace(1) %foo
@@ -827,13 +692,9 @@ prolog:
   call void @llvm.amdgcn.asyncmark()
 
   ; Load second iteration
-  %foo_gep1 = getelementptr i32, ptr addrspace(1) %foo, i32 1
-  %v1 = load i32, ptr addrspace(1) %foo_gep1
-  %bar_gep1 = getelementptr i32, ptr addrspace(1) %bar, i32 1
-  %g1 = load i32, ptr addrspace(1) %bar_gep1
-
-  %lds_gep1 = getelementptr i32, ptr addrspace(3) %lds, i32 1
-  call void @llvm.amdgcn.global.load.lds(ptr addrspace(1) %foo_gep1, ptr addrspace(3) %lds_gep1, i32 4, i32 0, i32 u0x20)
+  %v1 = load i32, ptr addrspace(1) %foo
+  %g1 = load i32, ptr addrspace(1) %bar
+  call void @llvm.amdgcn.global.load.lds(ptr addrspace(1) %foo, ptr addrspace(3) %lds, i32 4, i32 0, i32 u0x20)
   call void @llvm.amdgcn.asyncmark()
 
   br label %loop_body
@@ -845,30 +706,25 @@ prolog:
 
 loop_body:
   %i = phi i32 [ 2, %prolog ], [ %i.next, %loop_body ]
+  %prev_sum = phi i32 [ 0, %prolog ], [ %sum, %loop_body ]
   %prev_v = phi i32 [ %v0, %prolog ], [ %v1, %loop_body ]
   %prev_g = phi i32 [ %g0, %prolog ], [ %g1, %loop_body ]
   %v1_phi = phi i32 [ %v1, %prolog ], [ %cur_v, %loop_body ]
   %g1_phi = phi i32 [ %g1, %prolog ], [ %cur_g, %loop_body ]
 
   ; Load next iteration
-  %foo_gep_cur = getelementptr i32, ptr addrspace(1) %foo, i32 %i
-  %cur_v = load i32, ptr addrspace(1) %foo_gep_cur
-  %bar_gep_cur = getelementptr i32, ptr addrspace(1) %bar, i32 %i
-  %cur_g = load i32, ptr addrspace(1) %bar_gep_cur
-  %lds_gep_cur = getelementptr i32, ptr addrspace(3) %lds, i32 %i
-  call void @llvm.amdgcn.global.load.lds(ptr addrspace(1) %foo_gep_cur, ptr addrspace(3) %lds_gep_cur, i32 4, i32 0, i32 u0x20)
+  %cur_v = load i32, ptr addrspace(1) %foo
+  %cur_g = load i32, ptr addrspace(1) %bar
+  call void @llvm.amdgcn.global.load.lds(ptr addrspace(1) %foo, ptr addrspace(3) %lds, i32 4, i32 0, i32 u0x20)
   call void @llvm.amdgcn.asyncmark()
 
   ; Wait for iteration i-2 and process
   call void @llvm.amdgcn.wait.asyncmark(i16 2)
   %lds_idx = sub i32 %i, 2
-  %lds_gep_read = getelementptr i32, ptr addrspace(3) %lds, i32 %lds_idx
-  %lds_val = load i32, ptr addrspace(3) %lds_gep_read
+  %lds_val = load i32, ptr addrspace(3) %lds
 
   %sum1 = add i32 %prev_v, %prev_g
-  %sum2 = add i32 %sum1, %lds_val
-  %out_gep = getelementptr i32, ptr addrspace(1) %out, i32 %lds_idx
-  store i32 %sum2, ptr addrspace(1) %out_gep
+  %sum = add i32 %sum1, %lds_val
 
   %i.next = add i32 %i, 1
   %cmp = icmp slt i32 %i.next, %n
@@ -877,22 +733,17 @@ loop_body:
 epilog:
   ; Process remaining iterations
   call void @llvm.amdgcn.wait.asyncmark(i16 1)
-  %lds_n_2 = sub i32 %n, 2
-  %lds_gep_n_2 = getelementptr i32, ptr addrspace(3) %lds, i32 %lds_n_2
-  %lds_val_n_2 = load i32, ptr addrspace(3) %lds_gep_n_2
-  %sum_e1 = add i32 %v1_phi, %g1_phi
+  %lds_val_n_2 = load i32, ptr addrspace(3) %lds
+  %sum_e0 = add i32 %sum, %g1_phi
+  %sum_e1 = add i32 %v1_phi, %sum_e0
   %sum_e2 = add i32 %sum_e1, %lds_val_n_2
-  %out_gep_e1 = getelementptr i32, ptr addrspace(1) %out, i32 %lds_n_2
-  store i32 %sum_e2, ptr addrspace(1) %out_gep_e1
 
   call void @llvm.amdgcn.wait.asyncmark(i16 0)
-  %lds_n_1 = sub i32 %n, 1
-  %lds_gep_n_1 = getelementptr i32, ptr addrspace(3) %lds, i32 %lds_n_1
-  %lds_val_n_1 = load i32, ptr addrspace(3) %lds_gep_n_1
+  %lds_val_n_1 = load i32, ptr addrspace(3) %lds
   %sum_e3 = add i32 %cur_v, %cur_g
   %sum_e4 = add i32 %sum_e3, %lds_val_n_1
-  %out_gep_e2 = getelementptr i32, ptr addrspace(1) %out, i32 %lds_n_1
-  store i32 %sum_e4, ptr addrspace(1) %out_gep_e2
+  %sum_e5 = add i32 %sum_e4, %sum_e2
+  store i32 %sum_e5, ptr addrspace(1) %out
 
   ret void
 }

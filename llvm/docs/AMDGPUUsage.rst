@@ -6603,8 +6603,8 @@ cache modifiers. They cannot be performed atomically. They can be performed with
 asynchronous, volatile and nontemporal semantics as if they were loads
 from the global address space:
 
-- asynchronous: aux bit u0x40000000
-- volatile: aux bit u0x20
+- volatile: aux bit 31 (u0x80000000)
+- asynchronous: aux bit 5 (u0x20)
 - nontemporal: metadata
 
 Private address space uses ``buffer_load/store`` using the scratch V#

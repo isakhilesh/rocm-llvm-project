@@ -18,12 +18,15 @@ completed.
 Operations
 ==========
 
-``async_load_to_lds``
----------------------
+Memory Accesses
+---------------
+
+LDS DMA Operations
+^^^^^^^^^^^^^^^^^^
 
 .. code-block:: llvm
 
-  ; Legacy "LDS DMA" operations
+  ; "Legacy" LDS DMA operations
   void @llvm.amdgcn.load.to.lds(ptr %src, ptr %dst, ASYNC)
   void @llvm.amdgcn.global.load.lds(ptr %src, ptr %dst, ASYNC)
   void @llvm.amdgcn.raw.buffer.load.lds(ptr %src, ptr %dst, ASYNC)
@@ -31,7 +34,7 @@ Operations
   void @llvm.amdgcn.struct.buffer.load.lds(ptr %src, ptr %dst, ASYNC)
   void @llvm.amdgcn.struct.ptr.buffer.load.lds(ptr %src, ptr %dst, ASYNC)
 
-Requests an async operation that copies the specified number of bytes from the
+Request an async operation that copies the specified number of bytes from the
 global/buffer pointer ``%src`` to the LDS pointer ``%dst``.
 
 The optional parameter `ASYNC` is a bit in the auxiliary argument to those
@@ -39,10 +42,19 @@ intrinsics, as documented in :ref:`LDS DMA operations<amdgpu-lds-dma-bits>`.
 When set, it indicates that the compiler should not automatically track the
 completion of this operation.
 
-``@llvm.amdgcn.asyncmark()``
-----------------------------
+.. note::
 
-Creates an *async marker* to track all the async operations that are program
+   The above builtin signatures are *merely representative*. The exact semantics
+   such as function parameters, supported GFX architecture, the number of bytes
+   copied, etc. is documented elsewhere.
+
+``asyncmark`` Operations
+------------------------
+
+``@llvm.amdgcn.asyncmark()``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Create an *async marker* to track all the async operations that are program
 ordered before this call. A marker M is said to be *completed* only when all
 async operations program ordered before M are reported by the implementation as
 having finished, and it is said to be *outstanding* otherwise.
@@ -54,9 +66,9 @@ Thus we have the following sufficient condition:
   P, and M is completed. X is said to be *outstanding* at P otherwise.
 
 ``@llvm.amdgcn.wait.asyncmark(i32 %N)``
----------------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Waits until the ``N+1`` th predecessor marker M in program order before this
+Wait until the ``N+1`` th predecessor marker M in program order before this
 call is completed, if M exists.
 
 N is an unsigned integer; the ``N+1`` th predecessor marker of point X is a

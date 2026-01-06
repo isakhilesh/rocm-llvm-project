@@ -677,11 +677,6 @@ public:
     return It != VMem.end() ? It->second.Scores[T] : 0;
   }
 
-  unsigned getClampedWait(InstCounterType T, unsigned ScoreToWait) const {
-    return std::min(getScoreUB(T) - ScoreToWait,
-                    Context->getWaitCountMax(T) - 1);
-  }
-
   bool merge(const WaitcntBrackets &Other);
 
   bool counterOutOfOrder(InstCounterType T) const;
@@ -735,7 +730,10 @@ public:
     return LastGDS > ScoreLBs[DS_CNT] && LastGDS <= ScoreUBs[DS_CNT];
   }
 
-  unsigned getPendingGDSWait() const { return getClampedWait(DS_CNT, LastGDS); }
+  unsigned getPendingGDSWait() const {
+    return std::min(getScoreUB(DS_CNT) - LastGDS,
+                    Context->getWaitCountMax(DS_CNT) - 1);
+  }
 
   void setPendingGDS() { LastGDS = ScoreUBs[DS_CNT]; }
 
@@ -904,7 +902,10 @@ private:
   // alias info. One store is kept per unique AAInfo.
   SmallVector<const MachineInstr *> LDSDMAStores;
 
+  // State of all counters at each async marker encountered so far.
   SmallVector<std::array<unsigned, NUM_INST_CNTS>> AsyncMarkers;
+  static const size_t MaxAsyncMarkers = 32;
+
   // Track the upper bound score for async operations that are not part of a
   // marker yet. Initialized to all zeros.
   std::array<unsigned, NUM_INST_CNTS> AsyncScore{};
@@ -1159,6 +1160,11 @@ void WaitcntBrackets::updateByEvent(WaitEventType E, MachineInstr &Inst) {
 }
 
 void WaitcntBrackets::recordAsyncMark(MachineInstr &Inst) {
+  // In the absence of loops, AsyncMarkers can grow linearly with the program
+  // until we encounter an ASYNCMARK_WAIT. We could drop the oldest mark above a
+  // limit every time we push a new mark, but that seems like unnecessary work
+  // in practical cases. We do separately truncate the array when processing a
+  // loop, which should be sufficient.
   AsyncMarkers.push_back(AsyncScore);
   AsyncScore = {};
   LLVM_DEBUG({
@@ -1268,49 +1274,47 @@ void WaitcntBrackets::print(raw_ostream &OS) const {
     llvm::interleaveComma(AsyncScore, OS);
   OS << '\n';
 
-  OS << "Async markers:";
-  if (AsyncMarkers.empty())
-    OS << "none";
-  OS << '\n';
+  OS << "Async markers: " << AsyncMarkers.size() << '\n';
 
   for (const auto &Marker : AsyncMarkers) {
     for (auto T : inst_counter_types()) {
       unsigned MarkedScore = Marker[T];
       switch (T) {
       case LOAD_CNT:
-        OS << "    " << (ST->hasExtendedWaitCounts() ? "LOAD" : "VM")
+        OS << "  " << (ST->hasExtendedWaitCounts() ? "LOAD" : "VM")
            << "_CNT: " << MarkedScore;
         break;
       case DS_CNT:
-        OS << "    " << (ST->hasExtendedWaitCounts() ? "DS" : "LGKM")
+        OS << "  " << (ST->hasExtendedWaitCounts() ? "DS" : "LGKM")
            << "_CNT: " << MarkedScore;
         break;
       case EXP_CNT:
-        OS << "    EXP_CNT: " << MarkedScore;
+        OS << "  EXP_CNT: " << MarkedScore;
         break;
       case STORE_CNT:
-        OS << "    " << (ST->hasExtendedWaitCounts() ? "STORE" : "VS")
+        OS << "  " << (ST->hasExtendedWaitCounts() ? "STORE" : "VS")
            << "_CNT: " << MarkedScore;
         break;
       case SAMPLE_CNT:
-        OS << "    SAMPLE_CNT: " << MarkedScore;
+        OS << "  SAMPLE_CNT: " << MarkedScore;
         break;
       case BVH_CNT:
-        OS << "    BVH_CNT: " << MarkedScore;
+        OS << "  BVH_CNT: " << MarkedScore;
         break;
       case KM_CNT:
-        OS << "    KM_CNT: " << MarkedScore;
+        OS << "  KM_CNT: " << MarkedScore;
         break;
       case X_CNT:
-        OS << "    X_CNT: " << MarkedScore;
+        OS << "  X_CNT: " << MarkedScore;
         break;
       default:
-        OS << "    UNKNOWN: " << MarkedScore;
+        OS << "  UNKNOWN: " << MarkedScore;
         break;
       }
-      OS << '\n';
     }
+    OS << '\n';
   }
+  OS << '\n';
 }
 
 /// Simplify the waitcnt, in the sense of removing redundant counts, and return
@@ -1368,7 +1372,8 @@ void WaitcntBrackets::determineWaitForScore(InstCounterType T,
     } else {
       // If a counter has been maxed out avoid overflow by waiting for
       // MAX(CounterType) - 1 instead.
-      unsigned NeededWait = getClampedWait(T, ScoreToWait);
+      unsigned NeededWait =
+          std::min(UB - ScoreToWait, Context->getWaitCountMax(T) - 1);
       addWait(Wait, T, NeededWait);
     }
   }
@@ -1385,6 +1390,14 @@ AMDGPU::Waitcnt WaitcntBrackets::determineAsyncWait(unsigned N) {
   });
 
   AMDGPU::Waitcnt Wait;
+  if (AsyncMarkers.size() == MaxAsyncMarkers) {
+    // We don't enforce MaxAsyncMarkers here, but only check if truncation may
+    // have occured elsewhere. So we clamp only for this one specific condition.
+    // The next check is what actually matters to the semantics.
+    LLVM_DEBUG(dbgs() << "Possible truncation. Ensuring a non-trivial wait.\n");
+    N = std::min(N, (unsigned)MaxAsyncMarkers - 1);
+  }
+
   if (AsyncMarkers.size() <= N) {
     LLVM_DEBUG(dbgs() << "No additional wait for async marker.\n");
     return Wait;
@@ -1393,18 +1406,7 @@ AMDGPU::Waitcnt WaitcntBrackets::determineAsyncWait(unsigned N) {
   size_t MarkerIndex = AsyncMarkers.size() - N - 1;
   const auto &RequiredMarker = AsyncMarkers[MarkerIndex];
   for (InstCounterType T : inst_counter_types()) {
-    unsigned ScoreToWait = RequiredMarker[T];
-    if (ScoreToWait == 0) {
-      continue;
-    }
-    unsigned LB = getScoreLB(T);
-    unsigned UB = getScoreUB(T);
-    if (ScoreToWait > LB && ScoreToWait <= UB) {
-      unsigned NeededWait = getClampedWait(T, ScoreToWait);
-      LLVM_DEBUG(dbgs() << "Score to wait: " << ScoreToWait
-                        << " Needed wait: " << NeededWait << '\n');
-      addWait(Wait, T, NeededWait);
-    }
+    determineWaitForScore(T, RequiredMarker[T], Wait);
   }
 
   // Immediately remove the waited marker and all older ones
@@ -2613,11 +2615,31 @@ bool WaitcntBrackets::mergeAsyncMarkers(
   // Determine maximum length needed after merging
   size_t MaxSize = std::max(AsyncMarkers.size(), OtherMarkers.size());
 
-  // Pad with zero-filled markers if our list is shorter.
-  // Zero represents "no pending async operations at this checkpoint"
-  // and acts as the identity element for max() during merging
+  // In the rare pathological case, a nest of loops that pushes marks without
+  // waiting on any mark can cause AsyncMarkers. We cap it to a reasonable
+  // limit. We can tune this later or potentially introduce a user option to
+  // control the value.
+  //
+  // For each backedge in isolation, the algorithm calls merge() twice because
+  // LB, UB and the scores reach a fixed point after the first merge(). This is
+  // unchanged even with the AsyncMarkers array because we call mergeScore just
+  // like the other cases. The practical upper bound is simply meant to deal
+  // with truly pathological cases.
+  MaxSize = std::min(MaxSize, MaxAsyncMarkers);
+
+  // Keep only the most recent markers within our limit.
+  if (AsyncMarkers.size() > MaxSize) {
+    AsyncMarkers.erase(AsyncMarkers.begin(),
+                       AsyncMarkers.begin() + (AsyncMarkers.size() - MaxSize));
+  }
+
+  // Pad with zero-filled markers if our list is shorter. Zero represents "no
+  // pending async operations at this checkpoint" and acts as the identity
+  // element for max() during merging. We pad at the beginning since the marks
+  // need to be aligned in most-recent order.
   std::array<unsigned, NUM_INST_CNTS> ZeroMarker{};
-  AsyncMarkers.resize(MaxSize, ZeroMarker);
+  AsyncMarkers.insert(AsyncMarkers.begin(), MaxSize - AsyncMarkers.size(),
+                      ZeroMarker);
 
   LLVM_DEBUG({
     dbgs() << "Before merge:\n";
@@ -2635,16 +2657,16 @@ bool WaitcntBrackets::mergeAsyncMarkers(
     }
   });
 
-  // Merge element-wise using the existing mergeScore function
-  // Use the appropriate MergeInfo for each counter type
-  for (size_t Idx = 0; Idx < MaxSize; ++Idx) {
+  // Merge element-wise using the existing mergeScore function and the
+  // appropriate MergeInfo for each counter type. Traverse backwards to align
+  // most recent marks. Iterate only while we have elements in both vectors.
+  size_t MergeCount = std::min(MaxSize, OtherMarkers.size());
+  for (size_t Idx = 1; Idx <= MergeCount; ++Idx) {
     for (auto T : inst_counter_types(Context->MaxCounter)) {
-      // Get the score from OtherMarkers, using 0 if index is out of bounds
-      unsigned OtherScore =
-          (Idx < OtherMarkers.size()) ? OtherMarkers[Idx][T] : 0;
-
-      // Merge using the counter-specific MergeInfo
-      StrictDom |= mergeScore(MergeInfos[T], AsyncMarkers[Idx][T], OtherScore);
+      unsigned OtherScore = OtherMarkers[OtherMarkers.size() - Idx][T];
+      StrictDom |=
+          mergeScore(MergeInfos[T], AsyncMarkers[AsyncMarkers.size() - Idx][T],
+                     OtherScore);
     }
   }
 
