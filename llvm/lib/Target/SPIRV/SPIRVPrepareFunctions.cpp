@@ -142,7 +142,7 @@ static bool lowerIntrinsicToFunction(IntrinsicInst *Intrinsic,
     auto *MemSet = IRB.CreateMemSet(Dest, Val, Len, MSI->getDestAlign(),
                                     MSI->isVolatile());
     IRB.CreateRetVoid();
-    expandMemSetAsLoop(cast<MemSetInst>(MemSet), TTI);
+    expandMemSetAsLoop(cast<MemSetInst>(MemSet), &TTI);
     MemSet->eraseFromParent();
     break;
   }

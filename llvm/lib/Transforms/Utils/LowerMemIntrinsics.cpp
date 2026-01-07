@@ -965,7 +965,7 @@ static Value *createMemSetSplat(const DataLayout &DL, IRBuilderBase &B,
 static void createMemSetLoopKnownSize(Instruction *InsertBefore, Value *DstAddr,
                                       ConstantInt *Len, Value *SetValue,
                                       Align DstAlign, bool IsVolatile,
-                                      const TargetTransformInfo &TTI) {
+                                      const TargetTransformInfo *TTI) {
   // No need to expand zero length memsets.
   if (Len->isZero())
     return;
@@ -981,10 +981,13 @@ static void createMemSetLoopKnownSize(Instruction *InsertBefore, Value *DstAddr,
   Type *Int8Type = Type::getInt8Ty(Ctx);
   assert(SetValue->getType() == Int8Type && "Can only set bytes");
 
-  // Use the same memory access type as for a memcpy with the same Dst and Src
-  // alignment and address space.
-  Type *LoopOpType = TTI.getMemcpyLoopLoweringType(
-      Ctx, Len, DstAS, DstAS, DstAlign, DstAlign, std::nullopt);
+  Type *LoopOpType = Int8Type;
+  if (TTI) {
+    // Use the same memory access type as for a memcpy with the same Dst and Src
+    // alignment and address space.
+    LoopOpType = TTI->getMemcpyLoopLoweringType(
+        Ctx, Len, DstAS, DstAS, DstAlign, DstAlign, std::nullopt);
+  }
   unsigned LoopOpSize = DL.getTypeStoreSize(LoopOpType);
 
   uint64_t LoopEndCount = alignDown(Len->getZExtValue(), LoopOpSize);
@@ -1023,10 +1026,11 @@ static void createMemSetLoopKnownSize(Instruction *InsertBefore, Value *DstAddr,
 
   IRBuilder<> RBuilder(InsertBefore);
 
+  assert(TTI && "there cannot be a residual loop without TTI");
   SmallVector<Type *, 5> RemainingOps;
-  TTI.getMemcpyLoopResidualLoweringType(RemainingOps, Ctx, RemainingBytes,
-                                        DstAS, DstAS, DstAlign, DstAlign,
-                                        std::nullopt);
+  TTI->getMemcpyLoopResidualLoweringType(RemainingOps, Ctx, RemainingBytes,
+                                         DstAS, DstAS, DstAlign, DstAlign,
+                                         std::nullopt);
 
   Type *PreviousOpTy = nullptr;
   Value *SplatSetValue = nullptr;
@@ -1054,7 +1058,7 @@ static void createMemSetLoopUnknownSize(Instruction *InsertBefore,
                                         Value *DstAddr, Value *Len,
                                         Value *SetValue, Align DstAlign,
                                         bool IsVolatile,
-                                        const TargetTransformInfo &TTI) {
+                                        const TargetTransformInfo *TTI) {
   BasicBlock *PreLoopBB = InsertBefore->getParent();
   Function *ParentFunc = PreLoopBB->getParent();
   const DataLayout &DL = ParentFunc->getDataLayout();
@@ -1065,8 +1069,11 @@ static void createMemSetLoopUnknownSize(Instruction *InsertBefore,
   Type *Int8Type = Type::getInt8Ty(Ctx);
   assert(SetValue->getType() == Int8Type && "Can only set bytes");
 
-  Type *LoopOpType = TTI.getMemcpyLoopLoweringType(
-      Ctx, Len, DstAS, DstAS, DstAlign, DstAlign, std::nullopt);
+  Type *LoopOpType = Int8Type;
+  if (TTI) {
+    LoopOpType = TTI->getMemcpyLoopLoweringType(
+        Ctx, Len, DstAS, DstAS, DstAlign, DstAlign, std::nullopt);
+  }
   unsigned LoopOpSize = DL.getTypeStoreSize(LoopOpType);
 
   Type *ResidualLoopOpType = Int8Type;
@@ -1245,7 +1252,7 @@ bool llvm::expandMemMoveAsLoop(MemMoveInst *Memmove,
 }
 
 void llvm::expandMemSetAsLoop(MemSetInst *Memset,
-                              const TargetTransformInfo &TTI) {
+                              const TargetTransformInfo *TTI) {
   if (ConstantInt *CI = dyn_cast<ConstantInt>(Memset->getLength())) {
     createMemSetLoopKnownSize(
         /* InsertBefore */ Memset,

@@ -381,7 +381,7 @@ bool PreISelIntrinsicLowering::expandMemIntrinsicUses(
             canEmitLibcall(ModuleLibcalls, TM, ParentFunc, RTLIB::MEMSET))
           break;
 
-        expandMemSetAsLoop(Memset, TTI);
+        expandMemSetAsLoop(Memset, &TTI);
         Changed = true;
         Memset->eraseFromParent();
       }
@@ -398,7 +398,7 @@ bool PreISelIntrinsicLowering::expandMemIntrinsicUses(
 
       Function *ParentFunc = Memset->getFunction();
       const TargetTransformInfo &TTI = LookupTTI(*ParentFunc);
-      expandMemSetAsLoop(Memset, TTI);
+      expandMemSetAsLoop(Memset, &TTI);
       Changed = true;
       Memset->eraseFromParent();
       break;

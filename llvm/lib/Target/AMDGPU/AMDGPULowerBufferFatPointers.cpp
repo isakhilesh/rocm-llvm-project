@@ -635,8 +635,9 @@ bool StoreFatPtrsAsIntsAndExpandMemcpyVisitor::visitMemSetInst(
     MemSetInst &MSI) {
   if (MSI.getDestAddressSpace() != AMDGPUAS::BUFFER_FAT_POINTER)
     return false;
-  llvm::expandMemSetAsLoop(&MSI,
-                           TM->getTargetTransformInfo(*MSI.getFunction()));
+  const TargetTransformInfo &TTI =
+      TM->getTargetTransformInfo(*MSI.getFunction());
+  llvm::expandMemSetAsLoop(&MSI, &TTI);
   MSI.eraseFromParent();
   return true;
 }
