@@ -59,7 +59,10 @@ LLVM_ABI bool expandMemMoveAsLoop(MemMoveInst *MemMove,
                                   const TargetTransformInfo &TTI);
 
 /// Expand \p MemSet as a loop. \p MemSet is not deleted.
-LLVM_ABI void expandMemSetAsLoop(MemSetInst *MemSet);
+/// If \p TTI is provided, the memset is expanded according to the target's
+/// preferences. Otherwise, it is expanded as a byte-wise loop.
+LLVM_ABI void expandMemSetAsLoop(MemSetInst *MemSet,
+                                 const TargetTransformInfo *TTI = nullptr);
 
 /// Expand \p MemSetPattern as a loop. \p MemSet is not deleted.
 LLVM_ABI void expandMemSetPatternAsLoop(MemSetPatternInst *MemSet);
