@@ -67,12 +67,12 @@ define void @interleaved_global_and_dma(ptr addrspace(1) %foo, ptr addrspace(3) 
 ; GFX900-NEXT:    s_mov_b32 m0, s4
 ; GFX900-NEXT:    ; wave barrier
 ; GFX900-NEXT:    s_nop 0
-; GFX900-NEXT:    global_load_dword v[3:4], off glc lds
+; GFX900-NEXT:    global_load_dword v[3:4], off lds
 ; GFX900-NEXT:    ; asyncmark
 ; GFX900-NEXT:    global_load_dword v0, v[0:1], off
 ; GFX900-NEXT:    ; wave barrier
 ; GFX900-NEXT:    s_nop 0
-; GFX900-NEXT:    global_load_dword v[3:4], off glc slc lds
+; GFX900-NEXT:    global_load_dword v[3:4], off lds
 ; GFX900-NEXT:    ; wave barrier
 ; GFX900-NEXT:    global_load_dword v1, v[3:4], off
 ; GFX900-NEXT:    ; asyncmark
@@ -102,12 +102,12 @@ define void @interleaved_global_and_dma(ptr addrspace(1) %foo, ptr addrspace(3) 
 ; GFX942-NEXT:    s_mov_b32 m0, s0
 ; GFX942-NEXT:    ; wave barrier
 ; GFX942-NEXT:    v_mov_b32_e32 v7, v6
-; GFX942-NEXT:    global_load_lds_dword v[8:9], off sc0
+; GFX942-NEXT:    global_load_lds_dword v[8:9], off
 ; GFX942-NEXT:    ; asyncmark
 ; GFX942-NEXT:    global_load_dword v0, v[0:1], off
 ; GFX942-NEXT:    ; wave barrier
 ; GFX942-NEXT:    v_mov_b32_e32 v6, v5
-; GFX942-NEXT:    global_load_lds_dword v[8:9], off sc0 nt
+; GFX942-NEXT:    global_load_lds_dword v[8:9], off
 ; GFX942-NEXT:    ; wave barrier
 ; GFX942-NEXT:    global_load_dword v1, v[8:9], off
 ; GFX942-NEXT:    ; asyncmark
@@ -134,11 +134,11 @@ define void @interleaved_global_and_dma(ptr addrspace(1) %foo, ptr addrspace(3) 
 ; GFX1010-NEXT:    global_load_dword v8, v[0:1], off
 ; GFX1010-NEXT:    ; wave barrier
 ; GFX1010-NEXT:    s_mov_b32 m0, s4
-; GFX1010-NEXT:    global_load_dword v[3:4], off glc lds
+; GFX1010-NEXT:    global_load_dword v[3:4], off lds
 ; GFX1010-NEXT:    ; asyncmark
 ; GFX1010-NEXT:    global_load_dword v0, v[0:1], off
 ; GFX1010-NEXT:    ; wave barrier
-; GFX1010-NEXT:    global_load_dword v[3:4], off glc slc lds
+; GFX1010-NEXT:    global_load_dword v[3:4], off lds
 ; GFX1010-NEXT:    ; wave barrier
 ; GFX1010-NEXT:    global_load_dword v1, v[3:4], off
 ; GFX1010-NEXT:    ; asyncmark
@@ -160,13 +160,13 @@ entry:
   %bar_v11 = load i32, ptr addrspace(1) %bar
   %foo_v1 = load i32, ptr addrspace(1) %foo
   call void @llvm.amdgcn.wave.barrier()
-  call void @llvm.amdgcn.global.load.lds(ptr addrspace(1) %bar, ptr addrspace(3) %lds, i32 4, i32 0, i32 u0x21)
+  call void @llvm.amdgcn.global.load.async.lds(ptr addrspace(1) %bar, ptr addrspace(3) %lds, i32 4, i32 0, i32 0)
   call void @llvm.amdgcn.asyncmark()
 
   ; Second batch: global load, async global-to-LDS, global load
   %foo_v2 = load i32, ptr addrspace(1) %foo
   call void @llvm.amdgcn.wave.barrier()
-  call void @llvm.amdgcn.global.load.lds(ptr addrspace(1) %bar, ptr addrspace(3) %lds, i32 4, i32 0, i32 u0x23)
+  call void @llvm.amdgcn.global.load.async.lds(ptr addrspace(1) %bar, ptr addrspace(3) %lds, i32 4, i32 0, i32 0)
   call void @llvm.amdgcn.wave.barrier()
   %bar_v12 = load i32, ptr addrspace(1) %bar
   call void @llvm.amdgcn.asyncmark()
@@ -294,13 +294,13 @@ entry:
   %bar_v11 = load i32, ptr addrspace(1) %bar
   %foo_v1 = load i32, ptr addrspace(1) %foo
   call void @llvm.amdgcn.wave.barrier()
-  call void @llvm.amdgcn.raw.ptr.buffer.load.lds(ptr addrspace(8) %buf, ptr addrspace(3) %lds, i32 4, i32 84, i32 0, i32 0, i32 u0x20)
+  call void @llvm.amdgcn.raw.ptr.buffer.load.async.lds(ptr addrspace(8) %buf, ptr addrspace(3) %lds, i32 4, i32 84, i32 0, i32 0, i32 0)
   call void @llvm.amdgcn.asyncmark()
 
   ; Second batch: global load, async global-to-LDS, global load.
   %foo_v2 = load i32, ptr addrspace(1) %foo
   call void @llvm.amdgcn.wave.barrier()
-  call void @llvm.amdgcn.raw.ptr.buffer.load.lds(ptr addrspace(8) %buf, ptr addrspace(3) %lds, i32 4, i32 88, i32 0, i32 0, i32 u0x20)
+  call void @llvm.amdgcn.raw.ptr.buffer.load.async.lds(ptr addrspace(8) %buf, ptr addrspace(3) %lds, i32 4, i32 88, i32 0, i32 0, i32 0)
   call void @llvm.amdgcn.wave.barrier()
   %bar_v12 = load i32, ptr addrspace(1) %bar
   call void @llvm.amdgcn.asyncmark()
@@ -451,11 +451,11 @@ define void @test_pipelined_loop(ptr addrspace(1) %foo, ptr addrspace(3) %lds, p
 ; GFX1010-NEXT:    s_setpc_b64 s[30:31]
 prolog:
   ; Load first iteration
-  call void @llvm.amdgcn.global.load.lds(ptr addrspace(1) %foo, ptr addrspace(3) %lds, i32 4, i32 0, i32 u0x20)
+  call void @llvm.amdgcn.global.load.async.lds(ptr addrspace(1) %foo, ptr addrspace(3) %lds, i32 4, i32 0, i32 0)
   call void @llvm.amdgcn.asyncmark()
 
   ; Load second iteration
-  call void @llvm.amdgcn.global.load.lds(ptr addrspace(1) %foo, ptr addrspace(3) %lds, i32 4, i32 0, i32 u0x20)
+  call void @llvm.amdgcn.global.load.async.lds(ptr addrspace(1) %foo, ptr addrspace(3) %lds, i32 4, i32 0, i32 0)
   call void @llvm.amdgcn.asyncmark()
 
   br label %loop_body
@@ -465,7 +465,7 @@ loop_body:
   %sum = phi i32 [ 0, %prolog ], [ %sum_i, %loop_body ]
 
   ; Load next iteration
-  call void @llvm.amdgcn.global.load.lds(ptr addrspace(1) %foo, ptr addrspace(3) %lds, i32 4, i32 0, i32 u0x20)
+  call void @llvm.amdgcn.global.load.async.lds(ptr addrspace(1) %foo, ptr addrspace(3) %lds, i32 4, i32 0, i32 0)
   call void @llvm.amdgcn.asyncmark()
 
   ; Wait for iteration i-2 and process
@@ -688,13 +688,13 @@ prolog:
   ; Load first iteration
   %v0 = load i32, ptr addrspace(1) %foo
   %g0 = load i32, ptr addrspace(1) %bar
-  call void @llvm.amdgcn.global.load.lds(ptr addrspace(1) %foo, ptr addrspace(3) %lds, i32 4, i32 0, i32 u0x20)
+  call void @llvm.amdgcn.global.load.async.lds(ptr addrspace(1) %foo, ptr addrspace(3) %lds, i32 4, i32 0, i32 0)
   call void @llvm.amdgcn.asyncmark()
 
   ; Load second iteration
   %v1 = load i32, ptr addrspace(1) %foo
   %g1 = load i32, ptr addrspace(1) %bar
-  call void @llvm.amdgcn.global.load.lds(ptr addrspace(1) %foo, ptr addrspace(3) %lds, i32 4, i32 0, i32 u0x20)
+  call void @llvm.amdgcn.global.load.async.lds(ptr addrspace(1) %foo, ptr addrspace(3) %lds, i32 4, i32 0, i32 0)
   call void @llvm.amdgcn.asyncmark()
 
   br label %loop_body
@@ -715,7 +715,7 @@ loop_body:
   ; Load next iteration
   %cur_v = load i32, ptr addrspace(1) %foo
   %cur_g = load i32, ptr addrspace(1) %bar
-  call void @llvm.amdgcn.global.load.lds(ptr addrspace(1) %foo, ptr addrspace(3) %lds, i32 4, i32 0, i32 u0x20)
+  call void @llvm.amdgcn.global.load.async.lds(ptr addrspace(1) %foo, ptr addrspace(3) %lds, i32 4, i32 0, i32 0)
   call void @llvm.amdgcn.asyncmark()
 
   ; Wait for iteration i-2 and process

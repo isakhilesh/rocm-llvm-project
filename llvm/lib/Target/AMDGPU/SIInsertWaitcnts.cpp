@@ -569,9 +569,9 @@ public:
     return VmemReadMapping[getVmemType(Inst)];
   }
 
-  bool hasCPolAsyncBit(const MachineInstr &MI) const {
-    const MachineOperand *CPol = TII->getNamedOperand(MI, AMDGPU::OpName::cpol);
-    return CPol && (CPol->getImm() & AMDGPU::CPol::ASYNC_pregfx12);
+  bool hasAsyncBit(const MachineInstr &MI) const {
+    const MachineOperand *Async = TII->getNamedOperand(MI, AMDGPU::OpName::IsAsync);
+    return Async && (Async->getImm());
   }
 
   bool isAsync(const MachineInstr &MI) const {
@@ -579,7 +579,7 @@ public:
       return false;
     if (SIInstrInfo::usesASYNC_CNT(MI))
       return true;
-    return hasCPolAsyncBit(MI);
+    return hasAsyncBit(MI);
   }
 
   bool isNonAsyncLdsDmaWrite(const MachineInstr &MI) const {
@@ -2840,7 +2840,7 @@ bool SIInsertWaitcnts::insertWaitcntInBlock(MachineFunction &MF,
 
     // Since most instructions don't have an Aux/CPol argument, it's faster to
     // first filter out anything that is not an LDS DMA writes.
-    if (SIInstrInfo::mayWriteLDSThroughDMA(Inst) && hasCPolAsyncBit(Inst))
+    if (SIInstrInfo::mayWriteLDSThroughDMA(Inst) && hasAsyncBit(Inst))
       InstsWithAsyncCpolBit.push_back(&Inst);
 
     bool FlushVmCnt = Block.getFirstTerminator() == Inst &&
@@ -3326,7 +3326,6 @@ bool SIInsertWaitcnts::run(MachineFunction &MF) {
       if (MachineOperand *CPol =
               TII->getNamedOperand(*MI, AMDGPU::OpName::cpol)) {
         unsigned CPolBits = CPol->getImm();
-        assert(CPolBits & AMDGPU::CPol::ASYNC_pregfx12);
         LLVM_DEBUG(dbgs() << "  Clearing ASYNC bit from: " << *MI);
         CPol->setImm(CPolBits & ~AMDGPU::CPol::ASYNC_pregfx12);
         Modified = true;
