@@ -1234,7 +1234,7 @@ let SubtargetPredicate = isGFX12Plus in {
   def GLOBAL_WBINV  : FLAT_Global_Invalidate_Writeback<"global_wbinv">;
 } // End SubtargetPredicate = isGFX12Plus
 
-let SubtargetPredicate = isGFX1250Plus in {
+let SubtargetPredicate = HasMcastLoadInsts in {
 
 let Uses = [M0, EXEC, ASYNCcnt], WaveSizePredicate = isWave32 in {
 defm CLUSTER_LOAD_ASYNC_TO_LDS_B8      :  FLAT_Global_Load_LDS_Pseudo<"cluster_load_async_to_lds_b8",   1>;
@@ -1253,7 +1253,7 @@ defm GLOBAL_STORE_ASYNC_FROM_LDS_B128  :  FLAT_Global_STORE_LDS_Pseudo<"global_s
 
 def TENSOR_SAVE : FLAT_Global_Tensor_Pseudo<"tensor_save", 1>;
 def TENSOR_STOP : FLAT_Global_Tensor_Pseudo<"tensor_stop">;
-} // End SubtargetPredicate = isGFX1250Plus
+} // End SubtargetPredicate = HasMcastLoadInsts
 
 defm SCRATCH_LOAD_UBYTE    : FLAT_Scratch_Load_Pseudo <"scratch_load_ubyte">;
 defm SCRATCH_LOAD_SBYTE    : FLAT_Scratch_Load_Pseudo <"scratch_load_sbyte">;
@@ -1826,70 +1826,17 @@ multiclass GlobalFLATStorePats<FLAT_Pseudo inst, SDPatternOperator node,
   }
 }
 
-class GlobalLoadIntrinWrapper<SDPatternOperator intrin> : PatFrag<
-  (ops node:$ptr, node:$cpol),
-  (intrin $ptr, $cpol)>;
+def global_load_b128_intrin_pat : PatFrag<
+  (ops node:$ptr),
+  (int_amdgcn_global_load_b128 $ptr, srcvalue)>;
 
-def wrapped_global_load_b128_intrin : GlobalLoadIntrinWrapper<int_amdgcn_global_load_b128>;
+def global_store_b128_intrin_pat : PatFrag<
+  (ops node:$data, node:$ptr),
+  (int_amdgcn_global_store_b128 $ptr, $data, srcvalue)>;
 
-class FlatLoadIntrinSignedPat <FLAT_Pseudo inst, SDPatternOperator node, ValueType vt> : GCNPat <
-  (vt (node (GlobalOffset (i64 VReg_64:$vaddr), i32:$offset), srcvalue)),
-  (inst $vaddr, $offset)
->;
-
-class FlatLoadIntrinSaddrPat <FLAT_Pseudo inst, SDPatternOperator node, ValueType vt> : GCNPat <
-  (vt (node (GlobalSAddr (i64 SReg_64:$saddr), (i32 VGPR_32:$voffset), i32:$offset, CPol:$cpol), srcvalue)),
-  (inst $saddr, $voffset, $offset, $cpol)
->;
-
-multiclass GlobalFLATLoadIntrinPats<FLAT_Pseudo inst, SDPatternOperator node, ValueType vt> {
-  def : FlatLoadIntrinSignedPat <inst, node, vt> {
-    let AddedComplexity = 10;
-    let SubtargetPredicate = inst.SubtargetPredicate;
-    let OtherPredicates = inst.OtherPredicates;
-  }
-  
-  def : FlatLoadIntrinSaddrPat<!cast<FLAT_Pseudo>(!cast<string>(inst)#"_SADDR"), node, vt> {
-    let AddedComplexity = 11;
-    let SubtargetPredicate = inst.SubtargetPredicate;
-    let OtherPredicates = inst.OtherPredicates;
-  }  
-}
-
-class GlobalStoreIntrinWrapper<SDPatternOperator intrin> : PatFrag<
-  (ops node:$data, node:$ptr, node:$scope),
-  (intrin $ptr, $data, $scope)>;
-
-def wrapped_global_store_b128_intrin : GlobalStoreIntrinWrapper<int_amdgcn_global_store_b128>;
-
-class FlatStoreIntrinSignedPat <FLAT_Pseudo inst, SDPatternOperator node, ValueType vt> : GCNPat <
-  (node vt:$data, (GlobalOffset i64:$vaddr, i32:$offset), srcvalue),
-  (inst $vaddr, getVregSrcForVT<vt>.ret:$data, $offset)
->;
-
-class FlatStoreIntrinSaddrPat <FLAT_Pseudo inst, SDPatternOperator node,
-                            ValueType vt> : GCNPat <
-  (node vt:$data, (GlobalSAddr (i64 SReg_64:$saddr), (i32 VGPR_32:$voffset), i32:$offset, CPol:$cpol), srcvalue),
-  (inst $voffset, getVregSrcForVT<vt>.ret:$data, $saddr, $offset, $cpol)
->;
-
-multiclass GlobalFLATStoreIntrinPats<FLAT_Pseudo inst, SDPatternOperator node, ValueType vt> {
-  def : FlatStoreIntrinSignedPat <inst, node, vt> {
-    let SubtargetPredicate = inst.SubtargetPredicate;
-    let OtherPredicates = inst.OtherPredicates;
-    let AddedComplexity = 10;
-  }
-
-  def : FlatStoreIntrinSaddrPat<!cast<FLAT_Pseudo>(!cast<string>(inst)#"_SADDR"), node, vt> {
-    let SubtargetPredicate = inst.SubtargetPredicate;
-    let OtherPredicates = inst.OtherPredicates;
-    let AddedComplexity = 11;
-  }
-}
-
-let SubtargetPredicate = isGFX940Plus in {
-defm : GlobalFLATLoadIntrinPats <GLOBAL_LOAD_DWORDX4, wrapped_global_load_b128_intrin, v4i32>;
-defm : GlobalFLATStoreIntrinPats <GLOBAL_STORE_DWORDX4, wrapped_global_store_b128_intrin, v4i32>;
+let SubtargetPredicate = HasFlatGlobalInsts in {
+defm : GlobalFLATLoadPats <GLOBAL_LOAD_DWORDX4, global_load_b128_intrin_pat, v4i32>;
+defm : GlobalFLATStorePats <GLOBAL_STORE_DWORDX4, global_store_b128_intrin_pat, v4i32>;
 }
 
 multiclass GlobalFLATStorePats_D16_t16<string inst, SDPatternOperator node, ValueType vt> {

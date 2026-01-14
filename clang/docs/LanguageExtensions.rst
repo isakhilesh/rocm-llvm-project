@@ -4375,6 +4375,39 @@ implemented in a way where the counter assignment can happen automatically.
 to a variable, have its address taken, or passed into or returned from a
 function, because doing so violates bounds safety conventions.
 
+.. _builtin_stack_address-doc:
+
+``__builtin_stack_address``
+---------------------------
+
+``__builtin_stack_address`` returns the address that separates the current
+function's (i.e. the one calling the builtin) stack space and the region of the
+stack that may be modified by called functions. The semantics match those of
+GCC's builtin of the same name.
+
+**Syntax**:
+
+.. code-block:: c++
+
+  void *__builtin_stack_address()
+
+**Example**:
+
+.. code-block:: c++
+
+  void *sp = __builtin_stack_address();
+
+**Description**:
+
+The address returned by ``__builtin_stack_address`` identifies the starting
+address of the stack region that may be used by called functions.
+
+On some architectures (e.g. x86), it's sufficient to return the value in the
+stack pointer register directly. On others (e.g. SPARCv9), adjustments are
+required to the value of the stack pointer register.
+``__builtin_stack_address`` performs the necessary adjustments and returns the
+correct boundary address.
+
 Multiprecision Arithmetic Builtins
 ----------------------------------
 
@@ -5360,7 +5393,6 @@ Signature:
 .. code-block:: c
 
     typedef __attribute__((__vector_size__(4 * sizeof(unsigned int)))) unsigned int v4u;
-    typedef v4u __attribute__((address_space(1))) *global_ptr_to_v4u;
 
     v4u __builtin_amdgcn_global_load_b128(
        v4u __attribute__((address_space(1))) *src,
@@ -5376,26 +5408,17 @@ cache behavior specified by `scope` which must be a string literal.
 
 Valid values for `scope` are:
 
-===================== ==========================================================
-scope                 architecture name
-===================== ==========================================================
-``"wavefront"``       wave
+* ``"wavefront"``
+* ``"workgroup"``
+* ``"cluster"``
+* ``"agent"``
+* ``""`` (empty string) 
 
-``"workgroup"``       group
+These builtins are supported on gfx9, gfx10, gfx11, and gfx12 targets.
 
-``"agent"``           device
-
-``""`` (empty string) system
-===================== ==========================================================
-
-These builtins are only supported on gfx942 and gfx950 devices.
-
-For semantics on gfx942, see Tables 47 and 48 in section 9.1.10 "Memory Scope
-and Temporal Controls" of the "AMD Instinct MI300" Instruction Set Architecture
-Reference.
-
-For semantics on gfx950, see Tables 49 and 50 in section 9.1.10 "Memory Scope
-and Temporal Controls" of the CDNA4 Instruction Set Architecture Reference.
+They map to the llvm intrinsics ``llvm.amdgcn.global.load.b128`` and
+``llvm.amdgcn.global.store.b128`` documented in `User Guide for AMDGPU Backend
+<https://llvm.org/docs/AMDGPUUsage.html>`_.
 
 
 ARM/AArch64 Language Extensions
