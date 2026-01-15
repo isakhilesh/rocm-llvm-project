@@ -15,7 +15,6 @@
 #define OFFLOAD_EMISSARY_H
 
 #include "../../../../openmp/device/include/EmissaryIds.h"
-
 extern "C" {
 
 /// Called by rpc after receiving emissary argument buffer
