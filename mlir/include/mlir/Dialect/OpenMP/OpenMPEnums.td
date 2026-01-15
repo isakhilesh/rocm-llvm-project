@@ -123,7 +123,7 @@ def ClauseMapFlagsPresent : I32BitEnumAttrCaseBit<"present", 10>;
 def ClauseMapFlagsOMPXHold : I32BitEnumAttrCaseBit<"ompx_hold", 11>;
 def ClauseMapFlagsAttach : I32BitEnumAttrCaseBit<"attach", 12>;
 def ClauseMapFlagsAttachAlways : I32BitEnumAttrCaseBit<"attach_always", 13>;
-def ClauseMapFlagsAttachNone : I32BitEnumAttrCaseBit<"attach_none", 14>;
+def ClauseMapFlagsAttachNever : I32BitEnumAttrCaseBit<"attach_never", 14>;
 def ClauseMapFlagsAttachAuto : I32BitEnumAttrCaseBit<"attach_auto", 15>;
 def ClauseMapFlagsRefPtr : I32BitEnumAttrCaseBit<"ref_ptr", 16>;
 def ClauseMapFlagsRefPtee : I32BitEnumAttrCaseBit<"ref_ptee", 17>;
@@ -131,32 +131,18 @@ def ClauseMapFlagsRefPtrPtee : I32BitEnumAttrCaseBit<"ref_ptr_ptee", 18>;
 def ClauseMapFlagsDescriptor : I32BitEnumAttrCaseBit<"descriptor", 19>;
 def ClauseMapFlagsIsDevicePtr : I32BitEnumAttrCaseBit<"is_device_ptr", 20>;
 
-def ClauseMapFlags : OpenMP_BitEnumAttr<
-    "ClauseMapFlags",
-    "Map types and modifiers tied to data maps", [
-      ClauseMapFlagsNone,
-      ClauseMapFlagsStorage,
-      ClauseMapFlagsTo,
-      ClauseMapFlagsFrom,
-      ClauseMapFlagsAlways,
-      ClauseMapFlagsDelete,
-      ClauseMapFlagsReturnParam,
-      ClauseMapFlagsPrivate,
-      ClauseMapFlagsLiteral,
-      ClauseMapFlagsImplicit,
-      ClauseMapFlagsClose,
-      ClauseMapFlagsPresent,
-      ClauseMapFlagsOMPXHold,
-      ClauseMapFlagsAttach,
-      ClauseMapFlagsAttachAlways,
-      ClauseMapFlagsAttachNone,
-      ClauseMapFlagsAttachAuto,
-      ClauseMapFlagsRefPtr,
-      ClauseMapFlagsRefPtee,
-      ClauseMapFlagsRefPtrPtee,
-      ClauseMapFlagsDescriptor,
-      ClauseMapFlagsIsDevicePtr
-    ]>;
+def ClauseMapFlags
+    : OpenMP_BitEnumAttr<
+          "ClauseMapFlags", "Map types and modifiers tied to data maps",
+          [ClauseMapFlagsNone, ClauseMapFlagsStorage, ClauseMapFlagsTo,
+           ClauseMapFlagsFrom, ClauseMapFlagsAlways, ClauseMapFlagsDelete,
+           ClauseMapFlagsReturnParam, ClauseMapFlagsPrivate,
+           ClauseMapFlagsLiteral, ClauseMapFlagsImplicit, ClauseMapFlagsClose,
+           ClauseMapFlagsPresent, ClauseMapFlagsOMPXHold, ClauseMapFlagsAttach,
+           ClauseMapFlagsAttachAlways, ClauseMapFlagsAttachNever,
+           ClauseMapFlagsAttachAuto, ClauseMapFlagsRefPtr,
+           ClauseMapFlagsRefPtee, ClauseMapFlagsRefPtrPtee,
+           ClauseMapFlagsDescriptor, ClauseMapFlagsIsDevicePtr]>;
 
 def ClauseMapFlagsAttr : OpenMP_EnumAttr<ClauseMapFlags,
                                          "clause_map_flags">;
