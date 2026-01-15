@@ -7076,13 +7076,18 @@ convertOmpTarget(Operation &opInst, llvm::IRBuilderBase &builder,
   }
 
   for (size_t i = 0, e = mapData.OriginalValue.size(); i != e; ++i) {
-    // declare target arguments are not passed to kernels as arguments
+    // 1) Declare target arguments are not passed to kernels as arguments
+    // 2) Attach maps are not passed in as arguments to kernels
+    // 3) Children of record objects are not passed in as arguments
     // TODO: We currently do not handle cases where a member is explicitly
     // passed in as an argument, this will likley need to be handled in
     // the near future, rather than using IsAMember, it may be better to
     // test if the relevant BlockArg is used within the target region and
     // then use that as a basis for exclusion in the kernel inputs.
-    if (!mapData.IsDeclareTarget[i] && !mapData.IsAMember[i])
+    bool isAttachMap = (mapData.Types[i] &
+                        llvm::omp::OpenMPOffloadMappingFlags::OMP_MAP_ATTACH) ==
+                       llvm::omp::OpenMPOffloadMappingFlags::OMP_MAP_ATTACH;
+    if (!mapData.IsDeclareTarget[i] && !mapData.IsAMember[i] && !isAttachMap)
       kernelInput.push_back(mapData.OriginalValue[i]);
   }
 
