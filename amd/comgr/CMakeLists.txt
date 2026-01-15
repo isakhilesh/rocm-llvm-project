@@ -9,8 +9,8 @@ set (ver_minor ${CMAKE_MATCH_1})
 
 message("Comgr Version: ${ver_major}.${ver_minor}.0")
 
-project(amd_comgr VERSION "${ver_major}.${ver_minor}.0" LANGUAGES C CXX)
-set(amd_comgr_NAME "${PROJECT_NAME}")
+project(amd-comgr VERSION "${ver_major}.${ver_minor}.0" LANGUAGES C CXX)
+set(amd_comgr_NAME "amd_comgr")
 
 # Get git branch and commit hash to add to log for easier debugging.
 execute_process(
@@ -256,11 +256,16 @@ list(APPEND AMD_COMGR_PRIVATE_COMPILE_DEFINITIONS AMD_COMGR_EXPORT)
 include(bc2h)
 include(opencl_header)
 include(DeviceLibs)
+include(utils)
+
+# Set Lintian Support Flags
+set( BUILD_ENABLE_LINTIAN_OVERRIDES OFF CACHE BOOL "Enable/Disable Lintian Overrides" )
+set( BUILD_DEBIAN_PKGING_FLAG OFF CACHE BOOL "Internal Status Flag to indicate Debian Packaging Build" )
 
 # Add major version to the name on windows, including Win64
 if (WIN32)
   set_target_properties(amd_comgr PROPERTIES
-    OUTPUT_NAME "amd_comgr_${amd_comgr_VERSION_MAJOR}")
+    OUTPUT_NAME "amd_comgr_${amd-comgr_VERSION_MAJOR}")
 endif()
 
 set_target_properties(amd_comgr PROPERTIES
@@ -268,8 +273,8 @@ set_target_properties(amd_comgr PROPERTIES
   CXX_STANDARD_REQUIRED Yes
   CXX_EXTENSIONS No)
 set_target_properties(amd_comgr PROPERTIES
-  SOVERSION "${amd_comgr_VERSION_MAJOR}"
-  VERSION "${amd_comgr_VERSION_MAJOR}.${amd_comgr_VERSION_MINOR}.${amd_comgr_VERSION_PATCH}")
+  SOVERSION "${amd-comgr_VERSION_MAJOR}"
+  VERSION "${amd-comgr_VERSION_MAJOR}.${amd-comgr_VERSION_MINOR}.${amd-comgr_VERSION_PATCH}")
 
 if (NOT COMGR_BUILD_SHARED_LIBS)
   set_target_properties(amd_comgr PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -337,15 +342,17 @@ configure_file("cmake/${AMD_COMGR_CONFIG_NAME}.in"
   "lib/${AMD_COMGR_PACKAGE_PREFIX}/${AMD_COMGR_CONFIG_NAME}"
   @ONLY)
 write_basic_package_version_file("${AMD_COMGR_VERSION_PATH}"
-  VERSION "${amd_comgr_VERSION}"
+  VERSION "${amd-comgr_VERSION}"
   COMPATIBILITY SameMajorVersion)
 
 if(ENABLE_ASAN_PACKAGING)
+  set( COMP_TYPE "asan" )
   install(TARGETS amd_comgr
     EXPORT amd_comgr_export
     COMPONENT asan
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
 else()
+  set( COMP_TYPE "amd-comgr" )
   install(TARGETS amd_comgr
     EXPORT amd_comgr_export
     COMPONENT amd-comgr
@@ -513,19 +520,27 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     set(CPACK_COMPONENTS_ALL amd-comgr)
     set(PKG_DESC_SUMMARY "Library to provide support functions for ROCm code objects.")
   endif()
-  set(CPACK_PACKAGE_NAME comgr)
+  set(CPACK_PACKAGE_NAME ${PROJECT_NAME})
   set(CPACK_PACKAGE_VENDOR "Advanced Micro Devices, Inc.")
   set(CPACK_PACKAGE_DESCRIPTION_SUMMARY ${PKG_DESC_SUMMARY})
   set(CPACK_PACKAGE_DESCRIPTION "This package contains the AMD ${CPACK_PACKAGE_DESCRIPTION_SUMMARY}.")
-  set(CPACK_PACKAGE_VERSION_MAJOR "${amd_comgr_VERSION_MAJOR}")
-  set(CPACK_PACKAGE_VERSION_MINOR "${amd_comgr_VERSION_MINOR}")
-  set(CPACK_PACKAGE_VERSION_PATCH "${amd_comgr_VERSION_PATCH}")
-  set(CPACK_PACKAGE_CONTACT "ROCm Compiler Support <rocm.compiler.support@amd.com>")
+  set(CPACK_PACKAGE_VERSION_MAJOR "${amd-comgr_VERSION_MAJOR}")
+  set(CPACK_PACKAGE_VERSION_MINOR "${amd-comgr_VERSION_MINOR}")
+  set(CPACK_PACKAGE_VERSION_PATCH "${amd-comgr_VERSION_PATCH}")
+  set(PKG_MAINTAINER_NM     "ROCm Compiler Support")
+  set(PKG_MAINTAINER_EMAIL  "rocm.compiler.support@amd.com")
+  set(CPACK_PACKAGE_CONTACT "${PKG_MAINTAINER_NM} <${PKG_MAINTAINER_EMAIL}>")
   set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE.txt")
 
   # ASAN Specific variables
-  set(CPACK_DEBIAN_ASAN_PACKAGE_NAME comgr-asan)
-  set(CPACK_RPM_ASAN_PACKAGE_NAME comgr-asan)
+  set(CPACK_DEBIAN_ASAN_PACKAGE_NAME      ${PROJECT_NAME}-asan)
+  set(CPACK_DEBIAN_ASAN_PACKAGE_PROVIDES  comgr-asan)
+  set(CPACK_DEBIAN_ASAN_PACKAGE_CONFLICTS comgr-asan)
+  set(CPACK_DEBIAN_ASAN_PACKAGE_REPLACES  comgr-asan)
+  set(CPACK_RPM_ASAN_PACKAGE_NAME         ${PROJECT_NAME}-asan)
+  set(CPACK_RPM_ASAN_PACKAGE_PROVIDES     comgr-asan)
+  set(CPACK_RPM_ASAN_PACKAGE_CONFLICTS    comgr-asan)
+  set(CPACK_RPM_ASAN_PACKAGE_OBSOLETES    comgr-asan)
 
  # Make proper version for appending
   set(ROCM_VERSION_FOR_PACKAGE "")
@@ -544,9 +559,15 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   # Debian package specific variables
   set(CPACK_DEB_COMPONENT_INSTALL ON)
   if(COMGR_BUILD_SHARED_LIBS)
-    set(CPACK_DEBIAN_AMD-COMGR_PACKAGE_NAME comgr)
+    set(CPACK_DEBIAN_AMD-COMGR_PACKAGE_NAME      ${PROJECT_NAME})
+    set(CPACK_DEBIAN_AMD-COMGR_PACKAGE_PROVIDES  comgr)
+    set(CPACK_DEBIAN_AMD-COMGR_PACKAGE_CONFLICTS comgr)
+    set(CPACK_DEBIAN_AMD-COMGR_PACKAGE_REPLACES  comgr)
   else()
-    set(CPACK_DEBIAN_AMD-COMGR_PACKAGE_NAME comgr-static-dev)
+    set(CPACK_DEBIAN_AMD-COMGR_PACKAGE_NAME      ${PROJECT_NAME}-static-dev)
+    set(CPACK_DEBIAN_AMD-COMGR_PACKAGE_PROVIDES  comgr-static-dev)
+    set(CPACK_DEBIAN_AMD-COMGR_PACKAGE_CONFLICTS comgr-static-dev)
+    set(CPACK_DEBIAN_AMD-COMGR_PACKAGE_REPLACES  comgr-static-dev)
   endif()
   set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/ROCm/llvm-project/tree/amd-staging/amd/comgr")
   set(DEBIAN_DEPENDENCIES "libzstd1, zlib1g, libc6, libstdc++6, libgcc-s1 | libgcc1")
@@ -566,9 +587,15 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   # RPM package specific variables
   set(CPACK_RPM_COMPONENT_INSTALL ON)
   if(COMGR_BUILD_SHARED_LIBS)
-    set(CPACK_RPM_AMD-COMGR_PACKAGE_NAME comgr)
+    set(CPACK_RPM_AMD-COMGR_PACKAGE_NAME      ${PROJECT_NAME})
+    set(CPACK_RPM_AMD-COMGR_PACKAGE_PROVIDES  comgr)
+    set(CPACK_RPM_AMD-COMGR_PACKAGE_CONFLICTS comgr)
+    set(CPACK_RPM_AMD-COMGR_PACKAGE_REPLACES  comgr)
   else()
-    set(CPACK_RPM_AMD-COMGR_PACKAGE_NAME comgr-static-devel)
+    set(CPACK_RPM_AMD-COMGR_PACKAGE_NAME      ${PROJECT_NAME}-static-devel)
+    set(CPACK_RPM_AMD-COMGR_PACKAGE_PROVIDES  comgr-static-devel)
+    set(CPACK_RPM_AMD-COMGR_PACKAGE_CONFLICTS comgr-static-devel)
+    set(CPACK_RPM_AMD-COMGR_PACKAGE_REPLACES  comgr-static-devel)
   endif()
 
   execute_process(COMMAND rpm --eval %{?dist}
@@ -615,6 +642,29 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
       string(REGEX REPLACE ",? ?rocm-core-asan" "" CPACK_RPM_ASAN_PACKAGE_REQUIRES ${CPACK_RPM_ASAN_PACKAGE_REQUIRES})
       string(REGEX REPLACE ",? ?rocm-core" "" CPACK_DEBIAN_PACKAGE_DEPENDS ${CPACK_DEBIAN_PACKAGE_DEPENDS})
       string(REGEX REPLACE ",? ?rocm-core-asan" "" CPACK_DEBIAN_ASAN_PACKAGE_DEPENDS ${CPACK_DEBIAN_ASAN_PACKAGE_DEPENDS})
+  endif()
+
+  # Configure Lintian Specific Package Data
+  configure_pkg( ${CPACK_PACKAGE_NAME} ${COMP_TYPE} ${CPACK_PACKAGE_VERSION} ${PKG_MAINTAINER_NM} ${PKG_MAINTAINER_EMAIL} )
+
+  # Custom installation for Debian Lintian File
+  if( BUILD_ENABLE_LINTIAN_OVERRIDES AND BUILD_DEBIAN_PKGING_FLAG )
+    set( OVERRIDE_FILE "${CMAKE_BINARY_DIR}/DEBIAN/${DEB_OVERRIDES_INSTALL_FILENM}" )
+    set( OVERRIDE_TEMP_INSTALL_LOC "/_CPack_Packages/Linux/DEB/${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}-Linux/${COMP_TYPE}" )
+    if(BUILD_SHARED_LIBS)
+      set(CPACK_INSTALL_COMMANDS
+          "${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}${OVERRIDE_TEMP_INSTALL_LOC}${DEB_OVERRIDES_INSTALL_PATH}"
+          "${CMAKE_COMMAND} -E copy ${OVERRIDE_FILE} ${CMAKE_BINARY_DIR}${OVERRIDE_TEMP_INSTALL_LOC}${DEB_OVERRIDES_INSTALL_PATH}"
+      )
+    else()
+      set( OVERRIDE_FILE_STATIC "${DEB_OVERRIDES_INSTALL_FILENM}-static-dev" )
+      set( OVERRIDE_FILE_STATIC_DEST
+           "${CMAKE_BINARY_DIR}${OVERRIDE_TEMP_INSTALL_LOC}${DEB_OVERRIDES_INSTALL_PATH}${OVERRIDE_FILE_STATIC}" )
+      set(CPACK_INSTALL_COMMANDS
+          "${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}${OVERRIDE_TEMP_INSTALL_LOC}${DEB_OVERRIDES_INSTALL_PATH}"
+          "${CMAKE_COMMAND} -E copy ${OVERRIDE_FILE} ${OVERRIDE_FILE_STATIC_DEST}"
+      )
+    endif()
   endif()
 
   include(CPack)
