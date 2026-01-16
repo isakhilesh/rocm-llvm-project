@@ -31,21 +31,23 @@ public:
                     const char *LinkingOutput) const override;
 
 private:
+
   void constructLinkAndEmitSpirvCommand(Compilation &C, const JobAction &JA,
                                         const InputInfoList &Inputs,
                                         const InputInfo &Output,
                                         const llvm::opt::ArgList &Args) const;
 };
 
-}
-}
+} 
+} 
 
 namespace toolchains {
 
-class LLVM_LIBRARY_VISIBILITY SPIRVOpenMPToolChain final : public ToolChain {
+class LLVM_LIBRARY_VISIBILITY SPIRVOpenMPToolChain : public SPIRVToolChain {
 public:
   SPIRVOpenMPToolChain(const Driver &D, const llvm::Triple &Triple,
-                       const ToolChain &HostTC, const llvm::opt::ArgList &Args);
+                       const ToolChain &HostTC,
+                       const llvm::opt::ArgList &Args);
 
   const llvm::Triple *getAuxTriple() const override {
     return &HostTC.getTriple();
@@ -80,15 +82,6 @@ public:
   void adjustDebugInfoKind(llvm::codegenoptions::DebugInfoKind &DebugInfoKind,
                            const llvm::opt::ArgList &Args) const override;
 
-  bool IsMathErrnoDefault() const override { return false; }
-  bool useIntegratedAs() const override { return true; }
-  bool isCrossCompiling() const override { return true; }
-  bool isPICDefault() const override { return false; }
-  bool isPIEDefault(const llvm::opt::ArgList &Args) const override {
-    return false;
-  }
-  bool isPICDefaultForced() const override { return false; }
-  bool SupportsProfiling() const override { return false; }
 
   const ToolChain &HostTC;
 
@@ -96,8 +89,8 @@ protected:
   Tool *buildLinker() const override;
 };
 
-}
-}
-}
+} 
+} 
+} 
 
-#endif
+#endif 
