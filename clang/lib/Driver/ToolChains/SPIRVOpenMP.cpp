@@ -1,4 +1,4 @@
-//===- SPIRVOpenMP.cpp - SPIR-V OpenMP Tool Implementations -------*- C++ -*-===//
+//==- SPIRVOpenMP.cpp - SPIR-V OpenMP Tool Implementations --------*- C++ -*==//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -18,7 +18,9 @@
 using namespace clang::driver;
 using namespace clang::driver::toolchains;
 using namespace clang::driver::tools;
+using namespace clang;
 using namespace llvm::opt;
+
 
 namespace clang::driver::tools::SPIRVOpenMP {
 
@@ -31,8 +33,9 @@ void Linker::constructLinkAndEmitSpirvCommand(
   const auto &TC =
       static_cast<const toolchains::SPIRVOpenMPToolChain &>(getToolChain());
   StringRef OutputFileName = Output.getFilename();
-  std::string TempBCName =
-      C.getDriver().GetTemporaryPath(llvm::sys::path::stem(OutputFileName), "bc");
+
+  std::string TempBCName = C.getDriver().GetTemporaryPath(
+      llvm::sys::path::stem(OutputFileName), "bc");
   const char *TempFile = C.getArgs().MakeArgString(TempBCName);
 
   ArgStringList LinkArgs{};
@@ -63,9 +66,7 @@ void Linker::constructLinkAndEmitSpirvCommand(
                                          InputInfo(&JA, TempFile, TempFile)));
 
   ArgStringList TrArgs;
-
   TrArgs.push_back("--spirv-max-version=1.4");
-
   TrArgs.push_back("--spirv-ext=+all");
 
   InputInfo TrInput = InputInfo(types::TY_LLVM_BC, TempFile, TempFile);
@@ -79,7 +80,7 @@ void Linker::ConstructJob(Compilation &C, const JobAction &JA,
   constructLinkAndEmitSpirvCommand(C, JA, Inputs, Output, Args);
 }
 
-}
+} 
 
 namespace clang::driver::toolchains {
 
@@ -87,7 +88,13 @@ SPIRVOpenMPToolChain::SPIRVOpenMPToolChain(const Driver &D,
                                            const llvm::Triple &Triple,
                                            const ToolChain &HostToolchain,
                                            const ArgList &Args)
-    : SPIRVToolChain(D, Triple, Args), HostTC(HostToolchain) {}
+    : SPIRVToolChain(D, Triple, Args), HostTC(HostToolchain) {
+  getProgramPaths().push_back(getDriver().Dir);
+}
+
+Tool *SPIRVOpenMPToolChain::buildLinker() const {
+  return new tools::SPIRVOpenMP::Linker(*this);
+}
 
 void SPIRVOpenMPToolChain::addClangTargetOptions(
     const llvm::opt::ArgList &DriverArgs, llvm::opt::ArgStringList &CC1Args,
@@ -99,7 +106,8 @@ void SPIRVOpenMPToolChain::addClangTargetOptions(
   if (!DriverArgs.hasFlag(options::OPT_offloadlib, options::OPT_no_offloadlib,
                           true))
     return;
+
   addOpenMPDeviceRTL(getDriver(), DriverArgs, CC1Args, "", getTriple(), HostTC);
 }
 
-} // namespace clang::driver::toolchains
+}
