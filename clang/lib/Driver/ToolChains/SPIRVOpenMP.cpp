@@ -12,6 +12,7 @@
 #include "clang/Driver/Driver.h"
 #include "clang/Driver/InputInfo.h"
 #include "clang/Options/Options.h"
+#include "llvm/Config/llvm-config.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 
@@ -20,6 +21,7 @@ using namespace clang::driver::toolchains;
 using namespace clang::driver::tools;
 using namespace clang;
 using namespace llvm::opt;
+
 
 
 namespace clang::driver::tools::SPIRVOpenMP {
@@ -66,11 +68,35 @@ void Linker::constructLinkAndEmitSpirvCommand(
                                          InputInfo(&JA, TempFile, TempFile)));
 
   ArgStringList TrArgs;
-  TrArgs.push_back("--spirv-max-version=1.4");
+  
+  TrArgs.push_back("--spirv-max-version=1.6");
   TrArgs.push_back("--spirv-ext=+all");
+  TrArgs.push_back("--spirv-allow-unknown-intrinsics");
+  TrArgs.push_back("--spirv-lower-const-expr");
+  TrArgs.push_back("--spirv-preserve-auxdata");
+  TrArgs.push_back("--spirv-debug-info-version=nonsemantic-shader-200");
+  
+  TrArgs.push_back(TempFile);
+  TrArgs.push_back("-o");
+  TrArgs.push_back(Output.getFilename());
 
+  std::string VersionedAMD = "amd-llvm-spirv-" + std::to_string(LLVM_VERSION_MAJOR);
+  std::string ExePath = TC.GetProgramPath(VersionedAMD.c_str());
+  
+  if (!llvm::sys::fs::can_execute(ExePath))
+    ExePath = TC.GetProgramPath("amd-llvm-spirv");
+  if (!llvm::sys::fs::can_execute(ExePath)) {
+    std::string VersionedStd = "llvm-spirv-" + std::to_string(LLVM_VERSION_MAJOR);
+    ExePath = TC.GetProgramPath(VersionedStd.c_str());
+  }
+  if (!llvm::sys::fs::can_execute(ExePath))
+    ExePath = TC.GetProgramPath("llvm-spirv");
+
+  const char *Translator = Args.MakeArgString(ExePath);
+  
   InputInfo TrInput = InputInfo(types::TY_LLVM_BC, TempFile, TempFile);
-  SPIRV::constructTranslateCommand(C, *this, JA, Output, TrInput, TrArgs);
+  C.addCommand(std::make_unique<Command>(JA, *this, ResponseFileSupport::None(),
+                                         Translator, TrArgs, TrInput, Output));
 }
 
 void Linker::ConstructJob(Compilation &C, const JobAction &JA,
@@ -110,4 +136,4 @@ void SPIRVOpenMPToolChain::addClangTargetOptions(
   addOpenMPDeviceRTL(getDriver(), DriverArgs, CC1Args, "", getTriple(), HostTC);
 }
 
-}
+} 
