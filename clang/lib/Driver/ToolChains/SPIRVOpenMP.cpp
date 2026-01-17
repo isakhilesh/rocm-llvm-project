@@ -12,6 +12,7 @@
 #include "clang/Driver/Driver.h"
 #include "clang/Driver/InputInfo.h"
 #include "clang/Options/Options.h"
+#include "llvm/Config/llvm-config.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 
@@ -66,11 +67,35 @@ void Linker::constructLinkAndEmitSpirvCommand(
                                          InputInfo(&JA, TempFile, TempFile)));
 
   ArgStringList TrArgs;
-  TrArgs.push_back("--spirv-max-version=1.4");
+  
+  TrArgs.push_back("--spirv-max-version=1.6");
   TrArgs.push_back("--spirv-ext=+all");
+  TrArgs.push_back("--spirv-allow-unknown-intrinsics");
+  TrArgs.push_back("--spirv-lower-const-expr");
+  TrArgs.push_back("--spirv-preserve-auxdata");
+  TrArgs.push_back("--spirv-debug-info-version=nonsemantic-shader-200");
+  
+  TrArgs.push_back(TempFile);
+  TrArgs.push_back("-o");
+  TrArgs.push_back(Output.getFilename());
 
+  std::string VersionedAMD = "amd-llvm-spirv-" + std::to_string(LLVM_VERSION_MAJOR);
+  std::string ExePath = TC.GetProgramPath(VersionedAMD.c_str());
+  
+  if (!llvm::sys::fs::can_execute(ExePath))
+    ExePath = TC.GetProgramPath("amd-llvm-spirv");
+  if (!llvm::sys::fs::can_execute(ExePath)) {
+    std::string VersionedStd = "llvm-spirv-" + std::to_string(LLVM_VERSION_MAJOR);
+    ExePath = TC.GetProgramPath(VersionedStd.c_str());
+  }
+  if (!llvm::sys::fs::can_execute(ExePath))
+    ExePath = TC.GetProgramPath("llvm-spirv");
+
+  const char *Translator = Args.MakeArgString(ExePath);
+  
   InputInfo TrInput = InputInfo(types::TY_LLVM_BC, TempFile, TempFile);
-  SPIRV::constructTranslateCommand(C, *this, JA, Output, TrInput, TrArgs);
+  C.addCommand(std::make_unique<Command>(JA, *this, ResponseFileSupport::None(),
+                                         Translator, TrArgs, TrInput, Output));
 }
 
 void Linker::ConstructJob(Compilation &C, const JobAction &JA,
@@ -89,7 +114,6 @@ SPIRVOpenMPToolChain::SPIRVOpenMPToolChain(const Driver &D,
                                            const ToolChain &HostToolchain,
                                            const ArgList &Args)
     : SPIRVToolChain(D, Triple, Args), HostTC(HostToolchain) {
-
   getProgramPaths().push_back(getDriver().Dir);
 }
 
@@ -101,11 +125,11 @@ void SPIRVOpenMPToolChain::addClangTargetOptions(
     const llvm::opt::ArgList &DriverArgs, llvm::opt::ArgStringList &CC1Args,
     Action::OffloadKind DeviceOffloadingKind) const {
 
-
   HostTC.addClangTargetOptions(DriverArgs, CC1Args, DeviceOffloadingKind);
 
   if (DeviceOffloadingKind != Action::OFK_OpenMP)
     return;
+
 
   CC1Args.append({"-mllvm", "-vectorize-loops=false",
                   "-mllvm", "-vectorize-slp=false"});
@@ -115,7 +139,6 @@ void SPIRVOpenMPToolChain::addClangTargetOptions(
                          options::OPT_fvisibility_ms_compat)) {
     CC1Args.append({"-fvisibility=hidden", "-fapply-global-visibility-to-externs"});
   }
-
 
   if (!DriverArgs.hasFlag(options::OPT_offloadlib, options::OPT_no_offloadlib,
                           true))
@@ -156,13 +179,11 @@ SPIRVOpenMPToolChain::getDeviceLibs(const llvm::opt::ArgList &DriverArgs,
 
   SmallVector<std::string, 4> LibraryPaths;
 
-
   StringRef UserPath =
       DriverArgs.getLastArgValue(options::OPT_libomptarget_spirv_bc_path_EQ);
   if (!UserPath.empty()) {
     LibraryPaths.push_back(UserPath.str());
   }
-
 
   StringRef RocmPath = DriverArgs.getLastArgValue(options::OPT_rocm_path_EQ);
   if (!RocmPath.empty()) {
@@ -171,23 +192,19 @@ SPIRVOpenMPToolChain::getDeviceLibs(const llvm::opt::ArgList &DriverArgs,
     LibraryPaths.push_back(std::string(P));
   }
 
-
   if (!getDriver().SysRoot.empty()) {
     SmallString<128> P(getDriver().SysRoot);
     llvm::sys::path::append(P, "lib");
     LibraryPaths.push_back(std::string(P));
   }
 
-
   SmallString<128> ResourceLibPath(getDriver().ResourceDir);
   llvm::sys::path::append(ResourceLibPath, "lib");
   LibraryPaths.push_back(std::string(ResourceLibPath));
 
-
   SmallString<128> DriverLibPath(getDriver().Dir);
   llvm::sys::path::append(DriverLibPath, "..", "lib");
   LibraryPaths.push_back(std::string(DriverLibPath));
-
 
   std::string BCName = "libomptarget-spirv.bc";
   for (const auto &Path : LibraryPaths) {
@@ -199,7 +216,6 @@ SPIRVOpenMPToolChain::getDeviceLibs(const llvm::opt::ArgList &DriverArgs,
     }
   }
 
-
   if (!DriverArgs.hasArg(options::OPT_nogpulib)) {
     getDriver().Diag(diag::warn_drv_omp_offload_target_missingbcruntime)
         << getTriple().str() << BCName;
@@ -209,7 +225,6 @@ SPIRVOpenMPToolChain::getDeviceLibs(const llvm::opt::ArgList &DriverArgs,
 }
 
 SanitizerMask SPIRVOpenMPToolChain::getSupportedSanitizers() const {
-
   return HostTC.getSupportedSanitizers();
 }
 
@@ -222,7 +237,6 @@ SPIRVOpenMPToolChain::computeMSVCVersion(const Driver *D,
 void SPIRVOpenMPToolChain::adjustDebugInfoKind(
     llvm::codegenoptions::DebugInfoKind &DebugInfoKind,
     const llvm::opt::ArgList &Args) const {
-
   DebugInfoKind = llvm::codegenoptions::NoDebugInfo;
 }
 
