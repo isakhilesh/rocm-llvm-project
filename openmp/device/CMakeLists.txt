@@ -88,6 +88,10 @@ elseif("${LLVM_DEFAULT_TARGET_TRIPLE}" MATCHES "^nvptx" OR
        "${CMAKE_CXX_COMPILER_TARGET}" MATCHES "^nvptx")
   set(target_name "nvptx")
   list(APPEND compile_flags --cuda-feature=+ptx63)
+elseif("${LLVM_DEFAULT_TARGET_TRIPLE}" MATCHES "^spirv" OR
+       "${CMAKE_CXX_COMPILER_TARGET}" MATCHES "^spirv")
+  set(target_name "spirv")
+  list(APPEND compile_flags "SHELL:-mllvm -vectorize-loops=false")
 endif()
 
 # Trick to combine these into a bitcode file via the linker's LTO pass.
