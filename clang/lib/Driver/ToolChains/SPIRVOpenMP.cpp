@@ -7,12 +7,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "SPIRVOpenMP.h"
-#include "CommonArgs.h"
+#include "clang/Driver/CommonArgs.h"
 #include "clang/Driver/Compilation.h"
 #include "clang/Driver/Driver.h"
 #include "clang/Driver/InputInfo.h"
 #include "clang/Options/Options.h"
-#include "llvm/Config/llvm-config.h"  
+#include "llvm/Config/llvm-config.h" 
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 
@@ -66,7 +66,6 @@ void Linker::constructLinkAndEmitSpirvCommand(
                                          LLVMLink, LLVMLinkCmdArgs, Inputs,
                                          InputInfo(&JA, TempFile, TempFile)));
 
-
   ArgStringList TrArgs;
   
   TrArgs.push_back("--spirv-max-version=1.6");
@@ -106,7 +105,8 @@ void Linker::ConstructJob(Compilation &C, const JobAction &JA,
   constructLinkAndEmitSpirvCommand(C, JA, Inputs, Output, Args);
 }
 
-} 
+}
+
 
 namespace clang::driver::toolchains {
 
@@ -214,9 +214,9 @@ SPIRVOpenMPToolChain::getDeviceLibs(const llvm::opt::ArgList &DriverArgs,
     }
   }
 
-  if (!DriverArgs.hasArg(options::OPT_nogpulib)) {
-    getDriver().Diag(diag::warn_drv_omp_offload_target_missingbcruntime)
-        << getTriple().str() << BCName;
+  if (!DriverArgs.hasArg(options::OPT_no_offloadlib)) {
+    getDriver().Diag(diag::err_drv_omp_offload_target_missingbcruntime)
+        << BCName << getTriple().str();
   }
 
   return BCLibs;

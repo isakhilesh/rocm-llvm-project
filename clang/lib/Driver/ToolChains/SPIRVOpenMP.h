@@ -18,7 +18,6 @@ namespace driver {
 namespace tools {
 namespace SPIRVOpenMP {
 
-
 class LLVM_LIBRARY_VISIBILITY Linker final : public Tool {
 public:
   Linker(const ToolChain &TC)
@@ -32,18 +31,16 @@ public:
                     const char *LinkingOutput) const override;
 
 private:
-  
   void constructLinkAndEmitSpirvCommand(Compilation &C, const JobAction &JA,
                                         const InputInfoList &Inputs,
                                         const InputInfo &Output,
                                         const llvm::opt::ArgList &Args) const;
 };
 
-} 
-} 
+}
+}
 
 namespace toolchains {
-
 
 class LLVM_LIBRARY_VISIBILITY SPIRVOpenMPToolChain : public SPIRVToolChain {
 public:
