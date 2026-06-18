@@ -7119,9 +7119,17 @@ const ToolChain &Driver::getOffloadToolChain(
       if (Kind == Action::OFK_HIP)
         TC = std::make_unique<toolchains::HIPAMDToolChain>(*this, Target,
                                                            *HostTC, Args);
-      else if (Kind == Action::OFK_OpenMP)
-        TC = std::make_unique<toolchains::AMDGPUOpenMPToolChain>(*this, Target,
-                                                                 *HostTC, Args);
+      else if (Kind == Action::OFK_OpenMP) {
+        // An AMDHSA target whose architecture is SPIR-V (e.g. spirv64-amd-amdhsa)
+        // targets the AMDGCN-flavored SPIR-V ABI and requires the SPIR-V OpenMP
+        // toolchain rather than the native AMDGPU one.
+        if (Target.isSPIRV())
+          TC = std::make_unique<toolchains::SPIRVOpenMPToolChain>(
+              *this, Target, *HostTC, Args);
+        else
+          TC = std::make_unique<toolchains::AMDGPUOpenMPToolChain>(
+              *this, Target, *HostTC, Args);
+      }
       break;
     default:
       break;
